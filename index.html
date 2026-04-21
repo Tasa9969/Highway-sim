@@ -1,1078 +1,1421 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Highway Drive Prototype</title>
-  <style>
-    html, body { margin: 0; height: 100%; overflow: hidden; background: #7fc7cf; font-family: Arial, sans-serif; }
-    #app { position: fixed; inset: 0; }
-    #hud {
-      position: fixed; inset: 0; pointer-events: none; color: #fff;
-      text-shadow: 0 1px 2px rgba(0,0,0,.8);
-      font-size: 14px;
-    }
-    #topLeft {
-      position: absolute; left: 16px; top: 16px; background: rgba(0,0,0,.32);
-      padding: 10px 12px; border-radius: 10px; line-height: 1.6;
-      backdrop-filter: blur(4px);
-    }
-    #message {
-      position: absolute; left: 50%; top: 20px; transform: translateX(-50%);
-      background: rgba(0,0,0,.38); padding: 10px 16px; border-radius: 999px;
-      font-weight: bold; letter-spacing: .04em;
-    }
-    #bottomAssist {
-      position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%);
-      width: min(720px, 80vw); height: 24px; border-radius: 999px; overflow: hidden;
-      background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.18);
-      box-shadow: 0 0 0 1px rgba(0,0,0,.12) inset;
-      display: grid; grid-template-columns: 1fr 1fr 1fr;
-    }
-    .assistLane {
-      position: relative; border-right: 1px solid rgba(255,255,255,.1);
-      background: linear-gradient(to top, rgba(255,255,255,.06), rgba(255,255,255,.02));
-    }
-    .assistLane:last-child { border-right: none; }
-    .fill {
-      position: absolute; inset: 0; opacity: 0; transition: opacity .1s linear, filter .1s linear;
-      background: linear-gradient(to top, rgba(255,96,96,.95), rgba(255,170,0,.72), rgba(255,255,255,.08));
-      filter: saturate(1.1);
-    }
-    .label {
-      position: absolute; bottom: -18px; width: 100%; text-align: center; font-size: 11px; opacity: .7;
-    }
-    #damageWrap {
-      margin-top: 4px; width: 190px; height: 10px; border-radius: 999px; overflow: hidden;
-      background: rgba(255,255,255,.16);
-    }
-    #damageBar { height: 100%; width: 0%; background: linear-gradient(90deg, #5dd75d, #ffc940, #ff5252); }
-    #help {
-      position: absolute; right: 16px; top: 16px; background: rgba(0,0,0,.30); padding: 10px 12px;
-      border-radius: 10px; line-height: 1.55; max-width: 310px; backdrop-filter: blur(4px);
-    }
-    #endScreen {
-      position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
-      background: rgba(0,0,0,.52); z-index: 10;
-    }
-    #endCard {
-      background: rgba(18,24,28,.92); color: #fff; width: min(520px, 92vw);
-      border-radius: 18px; padding: 24px; box-shadow: 0 20px 80px rgba(0,0,0,.45);
-    }
-    button {
-      pointer-events: auto; border: none; background: #2f8f4e; color: white; border-radius: 10px;
-      padding: 12px 16px; font-size: 15px; cursor: pointer; margin-top: 16px;
-    }
-    .small { opacity: .75; font-size: 12px; }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>高速道路ドライブシミュレーター</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#000; overflow:hidden; font-family:'Segoe UI',sans-serif; }
+#canvas { display:block; }
+#hud { position:fixed; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:10; }
+#speedometer { position:absolute; bottom:65px; right:22px; }
+#speedometer canvas { width:110px; height:110px; }
+#info-panel {
+  position:absolute; top:14px; left:14px;
+  color:#fff; background:rgba(0,0,0,0.58); border:1px solid rgba(255,255,255,0.13);
+  border-radius:8px; padding:10px 14px; font-size:12px; line-height:1.85;
+  min-width:155px; backdrop-filter:blur(3px);
+}
+.lbl { color:#778; font-size:10px; text-transform:uppercase; letter-spacing:.5px; }
+.val { color:#fff; font-weight:600; }
+#dmg-wrap {
+  position:absolute; top:14px; right:14px;
+  background:rgba(0,0,0,0.58); border:1px solid rgba(255,255,255,0.13);
+  border-radius:8px; padding:10px 14px; min-width:130px; backdrop-filter:blur(3px);
+}
+#dmg-lbl { color:#778; font-size:10px; text-transform:uppercase; letter-spacing:.5px; margin-bottom:5px; }
+#dmg-track { background:rgba(255,255,255,0.09); border-radius:3px; height:7px; }
+#dmg-fill { height:7px; border-radius:3px; background:#4caf50; width:0%; transition:background .3s; }
+#dmg-pct { color:#bbb; font-size:11px; margin-top:3px; }
+#rear-assist {
+  position:absolute; bottom:14px; left:50%; transform:translateX(-50%);
+  background:rgba(0,0,0,0.62); border:1px solid rgba(255,255,255,0.1);
+  border-radius:7px; padding:6px 12px; display:flex; align-items:center; gap:5px;
+}
+.ra-lbl { color:#556; font-size:9px; margin-right:3px; }
+.ra-cell {
+  width:54px; height:12px; border-radius:3px;
+  background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.07);
+  position:relative; overflow:hidden;
+}
+.ra-fill { position:absolute; top:0; left:0; height:100%; width:0%; border-radius:3px;
+  background:rgba(0,200,255,.55); transition:width .12s,background .12s; }
+.ra-cell.danger .ra-fill { background:rgba(255,50,50,.88); }
+.ra-cell.warn .ra-fill { background:rgba(255,175,0,.72); }
+#msg {
+  position:absolute; top:46%; left:50%; transform:translate(-50%,-50%);
+  color:#fff; font-size:19px; font-weight:700;
+  background:rgba(0,0,0,0.74); border:1px solid rgba(255,255,255,0.16);
+  border-radius:10px; padding:13px 26px; text-align:center;
+  display:none; white-space:pre-line;
+}
+#keyguide {
+  position:absolute; bottom:14px; right:14px;
+  background:rgba(0,0,0,0.52); border:1px solid rgba(255,255,255,0.1);
+  border-radius:7px; padding:7px 11px; font-size:10px; color:#556; line-height:1.9;
+}
+#keyguide span { color:#889; }
+/* Start */
+#start-screen {
+  position:fixed; top:0; left:0; width:100%; height:100%; z-index:100;
+  background:linear-gradient(170deg,#070b12 0%,#0c1824 55%,#080b10 100%);
+  display:flex; flex-direction:column; align-items:center; justify-content:center; color:#fff;
+}
+#start-screen h1 { font-size:30px; font-weight:900; letter-spacing:3px; color:#d8eeff; margin-bottom:4px; }
+.sub-t { color:#334; font-size:12px; margin-bottom:34px; }
+.sel-lbl { color:#446; font-size:10px; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px; }
+.btn-row { display:flex; gap:7px; margin-bottom:18px; flex-wrap:wrap; justify-content:center; }
+.sel-btn {
+  padding:8px 16px; background:rgba(255,255,255,0.04);
+  border:1px solid rgba(255,255,255,0.1); border-radius:5px;
+  color:#778; cursor:pointer; font-size:13px; transition:all .16s;
+}
+.sel-btn:hover { background:rgba(90,160,255,.08); border-color:rgba(90,160,255,.4); color:#bdf; }
+.sel-btn.on { background:rgba(90,160,255,.12); border-color:#5aa0ff; color:#fff; }
+#go-btn {
+  margin-top:6px; padding:12px 48px; background:#1558a0; color:#fff;
+  border:none; border-radius:7px; font-size:16px; font-weight:700;
+  cursor:pointer; letter-spacing:1px; transition:all .16s;
+  box-shadow:0 0 22px rgba(21,88,160,.45);
+}
+#go-btn:hover { background:#1d74cc; transform:scale(1.03); }
+.key-info { color:#334; font-size:11px; margin-top:16px; line-height:2; text-align:center; }
+.key-info span { color:#556; }
+/* Goal */
+#goal-screen {
+  position:fixed; top:0; left:0; width:100%; height:100%; z-index:200;
+  background:rgba(0,0,0,0.88); display:none;
+  flex-direction:column; align-items:center; justify-content:center; color:#fff;
+}
+#goal-screen h2 { font-size:40px; color:#5aaeff; margin-bottom:8px; }
+#goal-stats { color:#aaa; font-size:14px; line-height:2.4; text-align:center; }
+#retry-btn {
+  margin-top:26px; padding:10px 36px; background:#1558a0; color:#fff;
+  border:none; border-radius:7px; font-size:14px; font-weight:700;
+  cursor:pointer; transition:all .16s;
+}
+#retry-btn:hover { background:#1d74cc; }
+</style>
 </head>
 <body>
-  <div id="app"></div>
-  <div id="hud">
-    <div id="message">合流車線から停止状態でスタート。安全を見て本線へ。</div>
-    <div id="topLeft">
-      <div>速度 <span id="speed">0</span> km/h</div>
-      <div>車線 <span id="laneText">合流車線</span></div>
-      <div>区間 <span id="sectionText">都市高架導入区間</span></div>
-      <div>到達候補 <span id="destinationText">大阪 / 京都 / 名古屋 方面</span></div>
-      <div>ダメージ <span id="damageText">0</span>/100</div>
-      <div id="damageWrap"><div id="damageBar"></div></div>
-    </div>
-    <div id="help">
-      <div><strong>PC操作</strong></div>
-      <div>X / ↑ アクセル</div>
-      <div>Z / ↓ ブレーキ</div>
-      <div>A,D / ←,→ 左右操舵</div>
-      <div>Q / E ウインカー</div>
-      <div>Space ハザード</div>
-      <div class="small">画面下バー: 後方左 / 後方中央 / 後方右 の交通気配</div>
-    </div>
-    <div id="bottomAssist">
-      <div class="assistLane"><div class="fill" id="assistL"></div><div class="label">後方左</div></div>
-      <div class="assistLane"><div class="fill" id="assistC"></div><div class="label">後方中央</div></div>
-      <div class="assistLane"><div class="fill" id="assistR"></div><div class="label">後方右</div></div>
-    </div>
+
+<div id="start-screen">
+  <h1>高速道路ドライブ</h1>
+  <div class="sub-t">Highway Drive Simulator — Prototype v0.2</div>
+  <div class="sel-lbl">車種</div>
+  <div class="btn-row" id="vsel">
+    <button class="sel-btn on" data-v="sedan">セダン</button>
+    <button class="sel-btn" data-v="kei">軽自動車</button>
+    <button class="sel-btn" data-v="sports">スポーツカー</button>
+    <button class="sel-btn" data-v="truck">トラック</button>
+    <button class="sel-btn" data-v="dump">ダンプ</button>
+    <button class="sel-btn" data-v="bus">バス</button>
+    <button class="sel-btn" data-v="bike">バイク</button>
   </div>
-  <div id="endScreen">
-    <div id="endCard">
-      <h2 id="endTitle">到着</h2>
-      <p id="endBody"></p>
-      <button id="restartBtn">もう一度走る</button>
-      <div class="small">この試作版は HTML 単体のプレイアブル試作です。実在風標識、合流スタート、ルート選択、AI 交通の基礎を先に入れています。</div>
-    </div>
+  <div class="sel-lbl">交通量</div>
+  <div class="btn-row" id="tsel">
+    <button class="sel-btn" data-t="low">少</button>
+    <button class="sel-btn on" data-t="mid">中</button>
+    <button class="sel-btn" data-t="high">多</button>
   </div>
+  <button id="go-btn">ゲーム開始</button>
+  <div class="key-info">
+    <span>X</span>：アクセル &nbsp; <span>Z</span>：ブレーキ &nbsp; <span>← →</span> / <span>A D</span>：ステアリング
+  </div>
+</div>
 
-  <script type="module">
-    import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js';
+<div id="goal-screen">
+  <h2 id="goal-title">到着！</h2>
+  <div id="goal-stats"></div>
+  <button id="retry-btn" onclick="location.reload()">もう一度</button>
+</div>
 
-    const app = document.getElementById('app');
-    const speedEl = document.getElementById('speed');
-    const laneTextEl = document.getElementById('laneText');
-    const sectionTextEl = document.getElementById('sectionText');
-    const destinationTextEl = document.getElementById('destinationText');
-    const damageTextEl = document.getElementById('damageText');
-    const damageBarEl = document.getElementById('damageBar');
-    const messageEl = document.getElementById('message');
-    const assistEls = {
-      left: document.getElementById('assistL'),
-      center: document.getElementById('assistC'),
-      right: document.getElementById('assistR'),
-    };
-    const endScreen = document.getElementById('endScreen');
-    const endTitle = document.getElementById('endTitle');
-    const endBody = document.getElementById('endBody');
-    document.getElementById('restartBtn').onclick = () => location.reload();
+<div id="hud">
+  <div id="info-panel">
+    <div class="lbl">車種</div><div class="val" id="h-vtype">セダン</div>
+    <div class="lbl">区間</div><div class="val" id="h-seg">都市高架導入区間</div>
+    <div class="lbl">車線</div><div class="val" id="h-lane">合流車線</div>
+    <div class="lbl">走行距離</div><div class="val" id="h-dist">0.00 km</div>
+  </div>
+  <div id="speedometer"><canvas id="spdcv" width="220" height="220"></canvas></div>
+  <div id="dmg-wrap">
+    <div id="dmg-lbl">DAMAGE</div>
+    <div id="dmg-track"><div id="dmg-fill"></div></div>
+    <div id="dmg-pct">0 %</div>
+  </div>
+  <div id="rear-assist">
+    <span class="ra-lbl">後方</span>
+    <div class="ra-cell" id="ra-l"><div class="ra-fill"></div></div>
+    <div class="ra-cell" id="ra-c"><div class="ra-fill"></div></div>
+    <div class="ra-cell" id="ra-r"><div class="ra-fill"></div></div>
+  </div>
+  <div id="keyguide">
+    <span>X</span>：アクセル &nbsp; <span>Z</span>：ブレーキ<br>
+    <span>← →</span>：ステアリング
+  </div>
+  <div id="msg"></div>
+</div>
 
-    const ROAD = {
-      standardLaneWidth: 3.5,
-      constrainedLaneWidth: 3.25,
-      shoulderLeft: 0.75,
-      shoulderRight: 0.45,
-      dashLength: 8.0,
-      dashGap: 12.0,
-      get totalThreeLaneWidth() { return this.constrainedLaneWidth * 3 + this.shoulderLeft + this.shoulderRight; }
-    };
+<canvas id="canvas"></canvas>
 
-    const VEHICLES = {
-      sedan: { length: 4.6, width: 1.75, height: 1.45, speedBias: 0, leftBias: 0.55, colorChoices: [0xf4f4f4, 0x111111, 0xbebebe, 0x2b4c7e, 0x5f0d19] },
-      kei: { length: 3.4, width: 1.48, height: 1.65, speedBias: -8, leftBias: 0.82, colorChoices: [0xffffff, 0x7ec8e3, 0xf8d66d, 0xf4a6c6, 0xbedf9f] },
-      sport: { length: 4.4, width: 1.82, height: 1.25, speedBias: 15, leftBias: 0.15, colorChoices: [0xd22222, 0x224bcb, 0xffd54c, 0xffffff, 0x111111, 0x21a35f] },
-      truck: { length: 7.5, width: 2.3, height: 3.0, speedBias: -12, leftBias: 0.92, colorChoices: [0xe8e8e8, 0x9ca3af, 0x29435c, 0x395b3f] },
-      dump: { length: 6.5, width: 2.2, height: 2.8, speedBias: -14, leftBias: 0.9, colorChoices: [0xe8e8e8, 0x5f6b6d, 0x365943, 0x2d4a8f] },
-      bus: { length: 10.5, width: 2.5, height: 3.2, speedBias: -10, leftBias: 0.93, colorChoices: [0xf8f7ef, 0xd7e6ff, 0xd9eed7] },
-      bike: { length: 2.1, width: 0.8, height: 1.15, speedBias: 8, leftBias: 0.3, colorChoices: [0xffffff, 0x111111, 0xd22222, 0x1a66ff, 0x60bb46] },
-    };
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
 
-    const DESTS = [
-      { key: 'osaka', label: '大阪', en: 'Osaka' },
-      { key: 'kyoto', label: '京都', en: 'Kyoto' },
-      { key: 'nagoya', label: '名古屋', en: 'Nagoya' },
-      { key: 'hakata', label: '北九州', en: 'Kitakyushu' }
-    ];
+// ═══════════════════════════════════════════════
+// CONSTANTS
+// ═══════════════════════════════════════════════
+const LANE_W   = 3.25;   // 3-lane section width (m)
+const NUM_LN   = 3;
+const LS       = 0.75;   // left shoulder
+const RS       = 0.75;   // right shoulder
+const CB       = 0.6;    // centre barrier half-width
+const ROAD_W   = NUM_LN * LANE_W;
+const ROAD_LEN = 12000;
+const ROAD_END_Z = -ROAD_LEN + 12;
+const ROUTE_TOTAL_KM = 344.2;
+const ROUTE_POINTS = [
+  { name:'高井戸IC', km:0.0 },
+  { name:'調布IC', km:7.7 },
+  { name:'稲城IC', km:10.0 },
+  { name:'国立府中IC', km:16.9 },
+  { name:'八王子IC', km:25.8 },
+  { name:'相模湖IC', km:45.4 },
+  { name:'上野原IC', km:56.1 },
+  { name:'大月IC/JCT', km:71.0 },
+  { name:'勝沼IC', km:98.8 },
+  { name:'一宮御坂IC', km:106.2 },
+  { name:'甲府昭和IC', km:120.4 },
+  { name:'韮崎IC', km:134.9 },
+  { name:'諏訪IC', km:182.3 },
+  { name:'岡谷JCT', km:189.0 },
+  { name:'伊那IC', km:211.7 },
+  { name:'飯田IC', km:255.4 },
+  { name:'中津川IC', km:300.2 },
+  { name:'恵那IC', km:308.2 },
+  { name:'土岐IC/JCT', km:323.4 },
+  { name:'多治見IC', km:332.0 },
+  { name:'小牧東IC', km:337.8 },
+  { name:'小牧JCT/IC', km:344.2 },
+];
 
-    const scene = new THREE.Scene();
-    window.addEventListener('error', (ev) => {
-      const msg = document.getElementById('message');
-      if (msg) msg.textContent = '初期化エラーが発生しました。更新版を再読み込みしてください。';
-      console.error(ev.error || ev.message);
-    });
+const LANE_SECTIONS = [
+  { start: 40, end: -1450, lanes: 3 },
+  { start: -1450, end: -3100, lanes: 2 },
+  { start: -3100, end: -5600, lanes: 3 },
+  { start: -5600, end: -7600, lanes: 2 },
+  { start: -7600, end: -10200, lanes: 3 },
+  { start: -10200, end: -11050, lanes: 2 },
+  { start: -11050, end: -ROAD_LEN, lanes: 3 },
+];
+const DASH_ON  = 8;
+const DASH_GAP = 12;
 
-    scene.fog = new THREE.Fog(0x95d0db, 80, 900);
-
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-    renderer.setSize(innerWidth, innerHeight);
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    app.appendChild(renderer.domElement);
-
-    const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.1, 2000);
-
-    const hemi = new THREE.HemisphereLight(0xc8eef5, 0x74725f, 1.15);
-    scene.add(hemi);
-    const sun = new THREE.DirectionalLight(0xffffff, 1.1);
-    sun.position.set(120, 160, 40);
-    sun.castShadow = true;
-    scene.add(sun);
-
-    const world = new THREE.Group();
-    scene.add(world);
-
-    function rand(min, max) { return min + Math.random() * (max - min); }
-    function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
-    function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
-    function lerp(a, b, t) { return a + (b - a) * t; }
-    function smoothstep(edge0, edge1, x) {
-      x = clamp((x - edge0) / (edge1 - edge0), 0, 1);
-      return x * x * (3 - 2 * x);
-    }
-
-    function laneCountAt(s) {
-      if (s < 230) return 3;
-      if (s < 580) return 2;
-      if (s < 930) return 3;
-      return 2;
-    }
-
-    function laneWidthAt(s) {
-      return laneCountAt(s) >= 3 ? ROAD.constrainedLaneWidth : ROAD.standardLaneWidth;
-    }
-
-    function routeWidthAt(s) {
-      const laneWidth = laneWidthAt(s);
-      const laneCount = laneCountAt(s);
-      return laneWidth * laneCount + ROAD.shoulderLeft + ROAD.shoulderRight;
-    }
-
-    function laneCenterOffset(index, laneCount, laneWidth) {
-      const start = -((laneCount - 1) * laneWidth) / 2;
-      return start + index * laneWidth;
-    }
-
-    function routePoint(s) {
-      const x = 11 * Math.sin(s * 0.0045) + 4 * Math.sin(s * 0.011 + 0.8);
-      const y = 0.55 * Math.sin(s * 0.014) + (s > 520 ? 0.9 * Math.sin((s - 520) * 0.022) : 0);
-      const z = s;
-      return new THREE.Vector3(x, y, z);
-    }
-
-    function routeTangent(s) {
-      const p1 = routePoint(Math.max(0, s - 0.5));
-      const p2 = routePoint(s + 0.5);
-      return p2.sub(p1).normalize();
-    }
-
-    function routeFrame(s) {
-      const p = routePoint(s);
-      const tangent = routeTangent(s);
-      const up = new THREE.Vector3(0, 1, 0);
-      const right = new THREE.Vector3().crossVectors(up, tangent).normalize();
-      return { p, tangent, right, up };
-    }
-
-    function skyForProgress(t) {
-      const morningTop = new THREE.Color(0x84d8ef);
-      const noonTop = new THREE.Color(0x8fc8ff);
-      const duskTop = new THREE.Color(0xf1a16e);
-      const morningFog = new THREE.Color(0xaedbe5);
-      const noonFog = new THREE.Color(0x95d0db);
-      const duskFog = new THREE.Color(0xc38f78);
-      const top = t < 0.55 ? morningTop.clone().lerp(noonTop, t / 0.55) : noonTop.clone().lerp(duskTop, (t - 0.55) / 0.45);
-      const fog = t < 0.55 ? morningFog.clone().lerp(noonFog, t / 0.55) : noonFog.clone().lerp(duskFog, (t - 0.55) / 0.45);
-      return { top, fog };
-    }
-
-    function createRoadSegmentMesh(length = 1400) {
-      const geom = new THREE.BufferGeometry();
-      const positions = [];
-      const colors = [];
-      const indices = [];
-      const laneMarkers = [];
-      const markerColors = [];
-      const markerIndices = [];
-      const shoulderGeom = new THREE.BufferGeometry();
-      const shoulderPos = [];
-      const shoulderCol = [];
-      const shoulderIdx = [];
-      let idx = 0, markerIdx = 0, shoulderIdxCursor = 0;
-
-      for (let s = 0; s < length; s += 2) {
-        const frame = routeFrame(s);
-        const next = routeFrame(s + 2);
-        const width = routeWidthAt(s);
-        const half = width / 2;
-
-        const l1 = frame.p.clone().add(frame.right.clone().multiplyScalar(-half));
-        const r1 = frame.p.clone().add(frame.right.clone().multiplyScalar(half));
-        const l2 = next.p.clone().add(next.right.clone().multiplyScalar(-routeWidthAt(s + 2) / 2));
-        const r2 = next.p.clone().add(next.right.clone().multiplyScalar(routeWidthAt(s + 2) / 2));
-        [l1, r1, l2, r2].forEach(v => positions.push(v.x, v.y, v.z));
-        const c = new THREE.Color(0x313131);
-        for (let i = 0; i < 4; i++) colors.push(c.r, c.g, c.b);
-        indices.push(idx, idx + 2, idx + 1, idx + 1, idx + 2, idx + 3);
-        idx += 4;
-
-        const laneCount = laneCountAt(s);
-        for (let lane = 0; lane < laneCount + 1; lane++) {
-          if (lane === 0 || lane === laneCount) continue;
-          const off1 = laneCenterOffset(lane - 1, laneCount, laneWidthAt(s)) + laneWidthAt(s) / 2;
-          const off2 = laneCenterOffset(lane - 1, laneCount, laneWidthAt(s + 2)) + laneWidthAt(s + 2) / 2;
-          const center1 = frame.p.clone().add(frame.right.clone().multiplyScalar(off1));
-          const center2 = next.p.clone().add(next.right.clone().multiplyScalar(off2));
-          const dashWidth = 0.12;
-          const dashLength = 1.0;
-          const draw = (s % (ROAD.dashLength + ROAD.dashGap)) < ROAD.dashLength;
-          if (!draw) continue;
-          const a = center1.clone().add(frame.right.clone().multiplyScalar(-dashWidth / 2));
-          const b = center1.clone().add(frame.right.clone().multiplyScalar(dashWidth / 2));
-          const c1 = center2.clone().add(next.right.clone().multiplyScalar(-dashWidth / 2));
-          const d = center2.clone().add(next.right.clone().multiplyScalar(dashWidth / 2));
-          [a, b, c1, d].forEach(v => laneMarkers.push(v.x, v.y + 0.02, v.z));
-          const mc = new THREE.Color(0xf7f7f7);
-          for (let i = 0; i < 4; i++) markerColors.push(mc.r, mc.g, mc.b);
-          markerIndices.push(markerIdx, markerIdx + 2, markerIdx + 1, markerIdx + 1, markerIdx + 2, markerIdx + 3);
-          markerIdx += 4;
-        }
-
-        const leftShoulder1 = frame.p.clone().add(frame.right.clone().multiplyScalar(-half - 0.8));
-        const leftShoulder2 = next.p.clone().add(next.right.clone().multiplyScalar(-routeWidthAt(s + 2) / 2 - 0.8));
-        const leftEdge1 = frame.p.clone().add(frame.right.clone().multiplyScalar(-half));
-        const leftEdge2 = next.p.clone().add(next.right.clone().multiplyScalar(-routeWidthAt(s + 2) / 2));
-        [leftShoulder1, leftEdge1, leftShoulder2, leftEdge2].forEach(v => shoulderPos.push(v.x, v.y - 0.01, v.z));
-        const shoulderColor = new THREE.Color(0x6a604d);
-        for (let i = 0; i < 4; i++) shoulderCol.push(shoulderColor.r, shoulderColor.g, shoulderColor.b);
-        shoulderIdx.push(shoulderIdxCursor, shoulderIdxCursor + 2, shoulderIdxCursor + 1, shoulderIdxCursor + 1, shoulderIdxCursor + 2, shoulderIdxCursor + 3);
-        shoulderIdxCursor += 4;
-
-        const rightEdge1 = frame.p.clone().add(frame.right.clone().multiplyScalar(half));
-        const rightEdge2 = next.p.clone().add(next.right.clone().multiplyScalar(routeWidthAt(s + 2) / 2));
-        const rightShoulder1 = frame.p.clone().add(frame.right.clone().multiplyScalar(half + 0.8));
-        const rightShoulder2 = next.p.clone().add(next.right.clone().multiplyScalar(routeWidthAt(s + 2) / 2 + 0.8));
-        [rightEdge1, rightShoulder1, rightEdge2, rightShoulder2].forEach(v => shoulderPos.push(v.x, v.y - 0.01, v.z));
-        for (let i = 0; i < 4; i++) shoulderCol.push(shoulderColor.r, shoulderColor.g, shoulderColor.b);
-        shoulderIdx.push(shoulderIdxCursor, shoulderIdxCursor + 2, shoulderIdxCursor + 1, shoulderIdxCursor + 1, shoulderIdxCursor + 2, shoulderIdxCursor + 3);
-        shoulderIdxCursor += 4;
+// Lane 0=leftmost(slowest), 1=middle, 2=rightmost(overtake)
+function laneCountAtZ(z){
+  const sec = LANE_SECTIONS.find(s => z <= s.start && z > s.end);
+  return sec ? sec.lanes : 3;
+}
+function getLaneReductionAhead(z, lookahead = 220){
+  for(let i=0; i<LANE_SECTIONS.length-1; i++){
+    const cur = LANE_SECTIONS[i];
+    const next = LANE_SECTIONS[i+1];
+    if(cur.lanes > next.lanes && z <= cur.start && z > cur.end){
+      const dist = z - cur.end;
+      if(dist >= 0 && dist <= lookahead){
+        return { dist, startZ: cur.end, from: cur.lanes, to: next.lanes };
       }
+    }
+  }
+  return null;
+}
+function roadRightEdgeAtZ(z){
+  return -(ROAD_W/2) + laneCountAtZ(z) * LANE_W;
+}
+function closedLaneCenterX(z){
+  return laneX(2, z);
+}
+function laneX(ln, z = 0){
+  return -(ROAD_W/2) + LANE_W*ln + LANE_W/2;
+}
+function laneLabel(ln, z){
+  const count = laneCountAtZ(z);
+  if(ln < 0) return '合流車線';
+  if(count === 2){
+    return ln === 0 ? '第1車線（走行）' : '第2車線（追越）';
+  }
+  return ln===0 ? '第1車線（走行）' : ln===1 ? '第2車線（中央）' : '第3車線（追越）';
+}
+const MERGE_X  = laneX(0) - LANE_W;   // merge lane centre
 
-      geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-      geom.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-      geom.setIndex(indices);
-      geom.computeVertexNormals();
-      const road = new THREE.Mesh(geom, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0.03 }));
-      road.receiveShadow = true;
+function getRouteProgress(z){
+  return clamp01(Math.abs(Math.min(0, z)) / Math.abs(ROAD_END_Z));
+}
+function getRouteKm(z){
+  return getRouteProgress(z) * ROUTE_TOTAL_KM;
+}
+function getRouteSectionLabel(routeKm){
+  for(let i=0; i<ROUTE_POINTS.length-1; i++){
+    if(routeKm < ROUTE_POINTS[i+1].km){
+      return `${ROUTE_POINTS[i].name} → ${ROUTE_POINTS[i+1].name}`;
+    }
+  }
+  return `${ROUTE_POINTS[ROUTE_POINTS.length-2].name} → ${ROUTE_POINTS[ROUTE_POINTS.length-1].name}`;
+}
 
-      const markerGeom = new THREE.BufferGeometry();
-      markerGeom.setAttribute('position', new THREE.Float32BufferAttribute(laneMarkers, 3));
-      markerGeom.setAttribute('color', new THREE.Float32BufferAttribute(markerColors, 3));
-      markerGeom.setIndex(markerIndices);
-      const markers = new THREE.Mesh(markerGeom, new THREE.MeshStandardMaterial({ vertexColors: true }));
+const VDEFS = {
+  sedan: {name:'セダン',     L:4.6,  W:1.75,H:1.45,maxSpd:180,acc:7, brk:9, cruise:[95,110], clr:['#cccccc','#111111','#aaaaaa','#223355','#6b0f1a'],ai:{agg:.5,prc:.5,skl:.5}},
+  kei:   {name:'軽自動車',   L:3.4,  W:1.48,H:1.65,maxSpd:130,acc:5, brk:8, cruise:[80,95],  clr:['#ffffff','#dddddd','#aaddee','#ffeeaa','#ffccdd'],ai:{agg:.2,prc:.5,skl:.5}},
+  sports:{name:'スポーツカー',L:4.4, W:1.82,H:1.25,maxSpd:220,acc:14,brk:12,cruise:[120,145],clr:['#cc0000','#0000cc','#eeee00','#ffffff','#111111','#ff6600'],ai:{agg:.8,prc:.75,skl:.7}},
+  truck: {name:'トラック',   L:7.5,  W:2.3, H:3.0, maxSpd:110,acc:4, brk:6, cruise:[75,90],  clr:['#dddddd','#aaaaaa','#223344','#334455'],ai:{agg:.2,prc:.5,skl:.5}},
+  dump:  {name:'ダンプ',     L:6.5,  W:2.2, H:2.8, maxSpd:100,acc:4, brk:5, cruise:[70,85],  clr:['#cccccc','#888888','#333366','#6688aa'],ai:{agg:.45,prc:.35,skl:.45}},
+  bus:   {name:'バス',       L:10.5, W:2.5, H:3.2, maxSpd:110,acc:4, brk:6, cruise:[80,95],  clr:['#ffffff','#eeeeff','#aaccee','#ccffcc'],ai:{agg:.15,prc:.8,skl:.75}},
+  bike:  {name:'バイク',     L:2.1,  W:0.8, H:1.15,maxSpd:200,acc:12,brk:10,cruise:[100,130],clr:['#ffffff','#111111','#cc0000','#0000cc','#ffff00'],ai:{agg:.6,prc:.8,skl:.65}},
+};
 
-      shoulderGeom.setAttribute('position', new THREE.Float32BufferAttribute(shoulderPos, 3));
-      shoulderGeom.setAttribute('color', new THREE.Float32BufferAttribute(shoulderCol, 3));
-      shoulderGeom.setIndex(shoulderIdx);
-      shoulderGeom.computeVertexNormals();
-      const shoulder = new THREE.Mesh(shoulderGeom, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 }));
-      shoulder.receiveShadow = true;
+// ═══════════════════════════════════════════════
+// RENDERER / SCENE
+// ═══════════════════════════════════════════════
+const renderer = new THREE.WebGLRenderer({canvas:document.getElementById('canvas'),antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.setSize(innerWidth,innerHeight);
+addEventListener('resize',()=>{
+  renderer.setSize(innerWidth,innerHeight);
+  camera.aspect=innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+});
 
-      const group = new THREE.Group();
-      group.add(road, markers, shoulder);
-      return group;
+const scene = new THREE.Scene();
+const SKY0 = new THREE.Color(0xb8d4ec);
+scene.background = SKY0.clone();
+scene.fog = new THREE.FogExp2(0xb8d4ec, 0.0035);
+
+const camera = new THREE.PerspectiveCamera(54, innerWidth/innerHeight, 0.2, 900);
+
+scene.add(new THREE.AmbientLight(0xffffff,0.68));
+const sun = new THREE.DirectionalLight(0xfff6e0,1.15);
+sun.position.set(55,110,35);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048,2048);
+Object.assign(sun.shadow.camera,{left:-200,right:200,top:200,bottom:-200,near:1,far:600});
+sun.shadow.bias = -0.001;
+scene.add(sun);
+
+// ═══════════════════════════════════════════════
+// MATERIALS
+// ═══════════════════════════════════════════════
+const MAT = {
+  asphalt: new THREE.MeshLambertMaterial({color:0x495a68}),
+  shoulder:new THREE.MeshLambertMaterial({color:0x1e1e1f}),
+  white:   new THREE.MeshBasicMaterial({color:0xeeeee0}),
+  yellow:  new THREE.MeshBasicMaterial({color:0xf0c020}),
+  metal:   new THREE.MeshLambertMaterial({color:0x8a8a8a}),
+  concrete:new THREE.MeshLambertMaterial({color:0x9a9a9a}),
+  tire:    new THREE.MeshLambertMaterial({color:0x111111}),
+  glass:   new THREE.MeshLambertMaterial({color:0x7aaabb,transparent:true,opacity:0.52}),
+  ground:  new THREE.MeshLambertMaterial({color:0x3a4830}),
+};
+
+// ═══════════════════════════════════════════════
+// ROAD BUILDER
+// ═══════════════════════════════════════════════
+function buildRoad() {
+  const HL = ROAD_LEN/2;
+  const ZC = -HL;  // z-centre of road stretching from 0 to -ROAD_LEN
+
+  // Helper: flat plane
+  const plane = (w,d,x,z,y,mat,rcv) => {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w,d), mat);
+    m.rotation.x = -Math.PI/2; m.position.set(x,y,z);
+    if(rcv) m.receiveShadow=true;
+    scene.add(m); return m;
+  };
+
+  // Main asphalt
+  plane(ROAD_W, ROAD_LEN, 0, ZC, 0, MAT.asphalt, true);
+  // Left shoulder
+  plane(LS, ROAD_LEN, -(ROAD_W/2+LS/2), ZC, 0.004, MAT.shoulder);
+  // Right shoulder
+  plane(RS, ROAD_LEN,  (ROAD_W/2+RS/2), ZC, 0.004, MAT.shoulder);
+
+  // Ground beyond
+  plane(2000, ROAD_LEN+400, 0, ZC, -0.02, MAT.ground, true);
+
+  // ── Lane markings ──
+  solidLine(-(ROAD_W/2), ROAD_LEN, 0.15, 0.011);
+  solidVariableRightEdge(0.15, 0.011);
+  dashedVariableSeparator(1, 0.15, 0.011);
+  dashedVariableSeparator(2, 0.15, 0.011);
+  buildLaneClosures();
+
+  // ── Centre barrier (Jersey barrier style) ──
+  for(let side=-1; side<=1; side+=2) {
+    const bx = side*(ROAD_W/2+LS+CB/2);
+    const bg = new THREE.BoxGeometry(0.5,0.9,ROAD_LEN);
+    const bm = new THREE.Mesh(bg, MAT.concrete);
+    bm.position.set(bx,0.45,ZC); bm.castShadow=true; scene.add(bm);
+    // Chamfer top (fake)
+    const tg = new THREE.BoxGeometry(0.3,0.18,ROAD_LEN);
+    const tm = new THREE.Mesh(tg, new THREE.MeshLambertMaterial({color:0xb0b0b0}));
+    tm.position.set(bx,0.89,ZC); scene.add(tm);
+  }
+
+  // ── Sound walls (urban section only) ──
+  buildSoundWalls(-700, 10);
+
+  // ── Merge lane ──
+  buildMergeLane();
+
+  // ── Gantry signs ──
+  const signs=[
+    {z:-85, t:['合流注意','→ 本線'], r:null},
+    {z:-280,t:['中央道 E20','調布・八王子方面'], r:'E20'},
+    {z:-900,t:['国立府中IC 6km','八王子IC 15km'], r:'E20'},
+    {z:-2200,t:['相模湖IC 20km','大月JCT 46km'], r:'E20'},
+    {z:-4200,t:['勝沼IC 16km','甲府昭和IC 38km'], r:'E20'},
+    {z:-6500,t:['諏訪IC 20km','岡谷JCT 27km'], r:'E20'},
+    {z:-8700,t:['飯田IC 42km','中津川IC 87km'], r:'E20'},
+    {z:-10800,t:['土岐IC/JCT 14km','小牧JCT/IC 35km'], r:'E20'},
+  ];
+  signs.forEach(s => buildGantry(s.z, s.t, s.r));
+
+  // ── Scenery ──
+  buildScenery();
+}
+
+function solidLine(x, len, w, y) {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w,len), MAT.white);
+  m.rotation.x=-Math.PI/2; m.position.set(x,y,-len/2); scene.add(m);
+}
+function dashedLine(x, len, on, gap, w, y) {
+  const period = on+gap;
+  for(let z=0;z<len;z+=period) {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w,on), MAT.white);
+    m.rotation.x=-Math.PI/2; m.position.set(x,y,-(z+on/2)); scene.add(m);
+  }
+}
+function solidVariableRightEdge(w, y){
+  let segStart = 0;
+  let currentX = roadRightEdgeAtZ(0);
+  for(let z=-2; z>=-ROAD_LEN; z-=2){
+    const x = roadRightEdgeAtZ(z);
+    if(Math.abs(x-currentX) > 0.01){
+      const len = Math.abs(segStart - z);
+      const centerZ = (segStart + z) / 2;
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, len), MAT.white);
+      m.rotation.x = -Math.PI/2; m.position.set(currentX, y, centerZ); scene.add(m);
+      segStart = z;
+      currentX = x;
+    }
+  }
+  const len = Math.abs(segStart + ROAD_LEN);
+  const centerZ = (segStart - ROAD_LEN) / 2;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, len), MAT.white);
+  m.rotation.x = -Math.PI/2; m.position.set(currentX, y, centerZ); scene.add(m);
+}
+function dashedVariableSeparator(separatorIndex, w, y){
+  const period = DASH_ON + DASH_GAP;
+  for(let z=0; z>-ROAD_LEN; z-=period){
+    const sampleZ = z - DASH_ON/2;
+    if(laneCountAtZ(sampleZ) <= separatorIndex) continue;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, DASH_ON), MAT.white);
+    m.rotation.x = -Math.PI/2;
+    m.position.set(-(ROAD_W/2)+LANE_W*separatorIndex, y, sampleZ);
+    scene.add(m);
+  }
+}
+function buildLaneClosures(){
+  const transitionLen = 180;
+  const wallInset = 0.28;
+  LANE_SECTIONS.filter(sec => sec.lanes === 2).forEach(sec => {
+    const zStart = sec.start;
+    const zEnd = sec.end;
+    const closedLeft = -(ROAD_W/2) + LANE_W * 2;
+    const closedRight = ROAD_W/2;
+    const liveRight = roadRightEdgeAtZ(zStart);
+    const laneCenter = (closedLeft + closedRight) / 2;
+    const reducedWallX = liveRight + wallInset + CB/2;
+
+    const taper = new THREE.Shape();
+    taper.moveTo(closedLeft, zStart);
+    taper.lineTo(closedRight, zStart);
+    taper.lineTo(closedRight, zStart - transitionLen);
+    taper.lineTo(liveRight, zStart - transitionLen);
+    taper.lineTo(closedLeft, zStart);
+    const tg = new THREE.ShapeGeometry(taper);
+    const tm = new THREE.Mesh(tg, MAT.shoulder);
+    tm.rotation.x = -Math.PI/2;
+    tm.position.y = 0.008;
+    scene.add(tm);
+
+    const len = Math.abs((zStart - transitionLen) - zEnd);
+    const fill = new THREE.Mesh(new THREE.PlaneGeometry(closedRight - liveRight, len), MAT.shoulder);
+    fill.rotation.x = -Math.PI/2;
+    fill.position.set((closedRight + liveRight) / 2, 0.008, ((zStart - transitionLen) + zEnd) / 2);
+    scene.add(fill);
+
+    const edgeLen = Math.abs((zStart - transitionLen) - zEnd);
+    const edge = new THREE.Mesh(new THREE.PlaneGeometry(0.16, edgeLen), MAT.white);
+    edge.rotation.x = -Math.PI/2;
+    edge.position.set(liveRight, 0.013, ((zStart - transitionLen) + zEnd) / 2);
+    scene.add(edge);
+
+    const gore = new THREE.Mesh(new THREE.PlaneGeometry(0.18, transitionLen * 0.95), MAT.white);
+    gore.rotation.x = -Math.PI/2;
+    gore.rotation.z = -Math.atan2(closedRight - liveRight, transitionLen);
+    gore.position.set((closedRight + liveRight) / 2, 0.013, zStart - transitionLen / 2);
+    scene.add(gore);
+
+    for(let z=zStart-16; z>zEnd; z-=18){
+      const diag1 = new THREE.Mesh(new THREE.PlaneGeometry(0.24, 3.2), MAT.yellow);
+      diag1.rotation.x = -Math.PI/2;
+      diag1.rotation.z = Math.PI / 4.5;
+      diag1.position.set(laneCenter - 0.45, 0.014, z);
+      scene.add(diag1);
+      const diag2 = new THREE.Mesh(new THREE.PlaneGeometry(0.24, 3.2), MAT.yellow);
+      diag2.rotation.x = -Math.PI/2;
+      diag2.rotation.z = -Math.PI / 4.5;
+      diag2.position.set(laneCenter + 0.45, 0.014, z);
+      scene.add(diag2);
     }
 
-    function createGuardrails(length = 1400) {
-      const group = new THREE.Group();
-      const railMat = new THREE.MeshStandardMaterial({ color: 0x9ca3af, roughness: 0.55, metalness: 0.4 });
-      const postMat = new THREE.MeshStandardMaterial({ color: 0x6b7280, roughness: 0.7 });
-      for (let s = 0; s < length; s += 7) {
-        const frame = routeFrame(s);
-        const width = routeWidthAt(s);
-        const half = width / 2;
-        [-1, 1].forEach(side => {
-          const base = frame.p.clone().add(frame.right.clone().multiplyScalar(side * (half + 0.55)));
-          const post = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.7, 0.08), postMat);
-          post.position.copy(base).add(new THREE.Vector3(0, 0.35, 0));
-          post.castShadow = true;
-          const rail = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.12, 3.2), railMat);
-          rail.position.copy(base).add(new THREE.Vector3(0, 0.7, 0));
-          rail.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), frame.tangent.clone());
-          rail.castShadow = true;
-          group.add(post, rail);
+    const wallLen = Math.abs(zEnd - (zStart - transitionLen));
+    const wallCenterZ = ((zStart - transitionLen) + zEnd) / 2;
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(0.34, 1.05, wallLen), MAT.concrete);
+    wall.position.set(reducedWallX, 0.52, wallCenterZ);
+    wall.castShadow = true;
+    scene.add(wall);
+    const wallTop = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.18, wallLen), new THREE.MeshLambertMaterial({color:0xb0b0b0}));
+    wallTop.position.set(reducedWallX, 1.0, wallCenterZ);
+    scene.add(wallTop);
+
+    buildLaneReductionNotice(zStart, reducedWallX);
+    buildLaneReductionArrows(zStart);
+  });
+}
+
+
+function drawLaneReductionSymbol(ctx, x, y, scale = 1){
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(scale, scale);
+  ctx.strokeStyle = '#111111';
+  ctx.lineWidth = 10;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(-38, -26); ctx.lineTo(-38, 28);
+  ctx.moveTo(38, -26); ctx.lineTo(10, 4); ctx.lineTo(10, 28);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function buildLaneReductionNotice(zStart, wallX){
+  buildLaneReductionVMS(zStart);
+  buildLaneReductionGreenSigns(zStart, wallX);
+  buildLaneReductionCones(zStart);
+  buildLaneReductionArrows(zStart);
+}
+
+function buildLaneReductionVMS(zStart){
+  [3000, 2000].forEach(dist => {
+    const signZ = zStart + dist;
+    if(signZ > 20) return;
+    const spanW = roadRightEdgeAtZ(signZ) - (-(ROAD_W/2)) + LS + RS + CB * 2 + 3.6;
+    const postY = 4.8;
+    [-spanW/2, spanW/2].forEach(px => {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.14, postY, 10), MAT.metal);
+      post.position.set(px, postY / 2, signZ);
+      post.castShadow = true;
+      scene.add(post);
+    });
+    const beam = new THREE.Mesh(new THREE.BoxGeometry(spanW, 0.34, 0.34), MAT.metal);
+    beam.position.set(0, postY, signZ);
+    scene.add(beam);
+
+    const cv = document.createElement('canvas');
+    cv.width = 640; cv.height = 128;
+    const ctx = cv.getContext('2d');
+    ctx.fillStyle = '#111111';
+    ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.strokeStyle = '#2a2a2a';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(2, 2, cv.width - 4, cv.height - 4);
+    ctx.fillStyle = '#ffb300';
+    ctx.font = 'bold 34px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('この先 右車線規制', cv.width / 2, 46);
+    ctx.font = 'bold 38px sans-serif';
+    ctx.fillText('LEFT MERGE AHEAD', cv.width / 2, 96);
+
+    const tex = new THREE.CanvasTexture(cv);
+    const board = new THREE.Mesh(
+      new THREE.PlaneGeometry(Math.min(8.6, spanW * 0.72), 1.72),
+      new THREE.MeshBasicMaterial({map: tex, side: THREE.DoubleSide})
+    );
+    board.position.set(0, postY - 0.55, signZ);
+    scene.add(board);
+  });
+}
+
+function buildLaneReductionGreenSigns(zStart, wallX){
+  [1000, 500].forEach(dist => {
+    const signZ = zStart + dist;
+    if(signZ > 20) return;
+    const signX = wallX + 4.8;
+
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 4.8, 8), MAT.metal);
+    post.position.set(signX, 2.4, signZ);
+    post.castShadow = true;
+    scene.add(post);
+
+    const cv = document.createElement('canvas');
+    cv.width = 520; cv.height = 210;
+    const ctx = cv.getContext('2d');
+    ctx.fillStyle = '#0f6a2f';
+    ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 6;
+    ctx.strokeRect(3, 3, cv.width - 6, cv.height - 6);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 34px sans-serif';
+    ctx.fillText('この先 右車線減少', cv.width / 2, 46);
+    ctx.font = 'bold 30px sans-serif';
+    ctx.fillText(`${dist}m`, cv.width / 2, 88);
+    ctx.font = 'bold 24px sans-serif';
+    ctx.fillText('左車線へお寄りください', cv.width / 2, 194);
+
+    ctx.fillStyle = '#ffd54a';
+    ctx.save();
+    ctx.translate(92, 122);
+    ctx.rotate(Math.PI / 4);
+    ctx.fillRect(-34, -34, 68, 68);
+    ctx.restore();
+    drawLaneReductionSymbol(ctx, 92, 122, 0.9);
+
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 12;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(210, 132); ctx.lineTo(355, 132);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(210, 132); ctx.lineTo(238, 106);
+    ctx.moveTo(210, 132); ctx.lineTo(238, 158);
+    ctx.stroke();
+
+    const tex = new THREE.CanvasTexture(cv);
+    const mat = new THREE.MeshBasicMaterial({map: tex, side: THREE.DoubleSide, transparent: true});
+    const board = new THREE.Mesh(new THREE.PlaneGeometry(5.8, 2.35), mat);
+    board.position.set(signX - 0.04, 4.25, signZ);
+    board.rotation.y = -Math.PI / 2;
+    scene.add(board);
+  });
+}
+
+function buildLaneReductionCones(zStart){
+  const coneMat = new THREE.MeshLambertMaterial({color: 0xff6a00});
+  const stripeMat = new THREE.MeshBasicMaterial({color: 0xffffff});
+  [260, 220, 180, 140, 100].forEach((dist, idx) => {
+    const z = zStart + dist;
+    if(z > 25) return;
+    const t = idx / 4;
+    const x = laneX(2, z) - 0.15 - t * (LANE_W - 0.55);
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.52, 10), coneMat);
+    cone.position.set(x, 0.26, z);
+    cone.castShadow = true;
+    scene.add(cone);
+    const stripe = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.08, 10), stripeMat);
+    stripe.position.set(x, 0.22, z);
+    scene.add(stripe);
+  });
+
+  [210, 130].forEach(dist => {
+    const z = zStart + dist;
+    if(z > 25) return;
+    const x = laneX(2, z) - 0.6;
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.6, 0.08), MAT.metal);
+    post.position.set(x, 0.8, z);
+    scene.add(post);
+
+    const cv = document.createElement('canvas');
+    cv.width = 128; cv.height = 128;
+    const ctx = cv.getContext('2d');
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillRect(0, 0, 128, 128);
+    ctx.strokeStyle = '#ffb300';
+    ctx.lineWidth = 10;
+    ctx.beginPath();
+    ctx.moveTo(100, 24); ctx.lineTo(34, 64); ctx.lineTo(100, 104);
+    ctx.stroke();
+
+    const tex = new THREE.CanvasTexture(cv);
+    const board = new THREE.Mesh(new THREE.PlaneGeometry(0.85, 0.85), new THREE.MeshBasicMaterial({map: tex, side: THREE.DoubleSide}));
+    board.position.set(x, 1.35, z);
+    board.rotation.y = -Math.PI / 2;
+    scene.add(board);
+  });
+}
+
+function buildLaneReductionArrows(zStart){
+  [280, 180, 100].forEach(dist => {
+    const z = zStart + dist;
+    if(z > 30) return;
+    const x = laneX(2, z) - 0.15;
+    const shaft = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 3.4), MAT.white);
+    shaft.rotation.x = -Math.PI/2;
+    shaft.position.set(x, 0.016, z + 0.2);
+    scene.add(shaft);
+
+    const head1 = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 0.24), MAT.white);
+    head1.rotation.x = -Math.PI/2;
+    head1.rotation.z = Math.PI / 5.2;
+    head1.position.set(x - 0.48, 0.016, z - 0.8);
+    scene.add(head1);
+
+    const head2 = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 0.24), MAT.white);
+    head2.rotation.x = -Math.PI/2;
+    head2.rotation.z = -Math.PI / 5.2;
+    head2.position.set(x - 0.48, 0.016, z - 1.18);
+    scene.add(head2);
+  });
+}
+
+function buildSoundWalls(zStart, zEnd) {
+  const wallH = 3.5;
+  const wx = ROAD_W/2 + LS + CB + 0.4;
+  const panW = 3.9, panD = 0.22;
+  const zMin = Math.min(zStart, zEnd);
+  const zMax = Math.max(zStart, zEnd);
+
+  [-wx, wx].forEach(bx => {
+    const spanLen = zMax - zMin;
+    const zCenter = (zMin + zMax) / 2;
+
+    const fg = new THREE.BoxGeometry(0.5, 0.45, spanLen);
+    const fm = new THREE.Mesh(fg, MAT.concrete);
+    fm.position.set(bx,0.22,zCenter);
+    scene.add(fm);
+
+    for(let z=zMax-panW/2; z>zMin; z-=panW+0.08) {
+      const isGlass = (Math.floor(Math.abs(z)/16)%4===0);
+      const col = isGlass ? 0x8fb8c8 : new THREE.Color().setHSL(0,.0,.66+Math.random()*.08).getHex();
+      const pg = new THREE.BoxGeometry(panD,wallH,panW);
+      const pm = new THREE.Mesh(pg,
+        isGlass
+          ? new THREE.MeshLambertMaterial({color:col,transparent:true,opacity:.38})
+          : new THREE.MeshLambertMaterial({color:col})
+      );
+      pm.position.set(bx, wallH/2+0.45, z);
+      pm.castShadow=true;
+      scene.add(pm);
+    }
+  });
+}
+
+function buildMergeLane() {
+  const mLen = 180, mX = MERGE_X;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(LANE_W,mLen), MAT.asphalt);
+  m.rotation.x=-Math.PI/2; m.position.set(mX,0.001,-(mLen/2)+25); m.receiveShadow=true; scene.add(m);
+  // Left edge
+  solidLine(mX-LANE_W/2, mLen, 0.15, 0.012);
+  // Right dashed (shared with main lane 0 left edge)
+  dashedLine(mX+LANE_W/2, mLen, DASH_ON, DASH_GAP, 0.15, 0.012);
+  // Taper arrow
+  for(let z=-30;z>-mLen+10;z-=35) {
+    const ag = new THREE.Mesh(new THREE.PlaneGeometry(0.7,2.5),MAT.white);
+    ag.rotation.x=-Math.PI/2; ag.position.set(mX,0.015,z); scene.add(ag);
+  }
+  // Guard rail on merge left
+  const grg = new THREE.BoxGeometry(0.12,0.55,mLen);
+  const grm = new THREE.Mesh(grg,MAT.metal); grm.position.set(mX-LANE_W/2-0.2,0.27,-mLen/2+25); scene.add(grm);
+}
+
+function buildGantry(z, lines, routeNum) {
+  const spanW = ROAD_W + LS + RS + CB*2 + 5;
+  const postH = 6.8, postR = 0.2;
+  const beamH = 0.45, beamD = 0.42;
+  const signH = 2.4;
+
+  // Posts
+  [-spanW/2, spanW/2].forEach(px => {
+    const pg = new THREE.CylinderGeometry(postR, postR+0.04, postH, 10);
+    const pm = new THREE.Mesh(pg,MAT.metal); pm.position.set(px,postH/2,z); pm.castShadow=true; scene.add(pm);
+    // Base flange
+    const bf = new THREE.Mesh(new THREE.CylinderGeometry(.55,.55,.12,10), MAT.metal);
+    bf.position.set(px,.06,z); scene.add(bf);
+  });
+  // Beam
+  const bm = new THREE.Mesh(new THREE.BoxGeometry(spanW,beamH,beamD), MAT.metal);
+  bm.position.set(0,postH,z); scene.add(bm);
+
+  // Sign texture
+  const CW=512,CH=130;
+  const cv=document.createElement('canvas'); cv.width=CW; cv.height=CH;
+  const ctx=cv.getContext('2d');
+  ctx.fillStyle='#145c22';
+  ctx.fillRect(0,0,CW,CH);
+  ctx.strokeStyle='#ffffff'; ctx.lineWidth=5;
+  ctx.strokeRect(3,3,CW-6,CH-6);
+  if(routeNum) {
+    ctx.fillStyle='#ffffff';
+    ctx.beginPath();
+    if(ctx.roundRect) ctx.roundRect(14,14,72,38,6); else ctx.rect(14,14,72,38);
+    ctx.fill();
+    ctx.fillStyle='#145c22';
+    ctx.font='bold 22px sans-serif'; ctx.textAlign='center';
+    ctx.fillText(routeNum,50,38);
+  }
+  ctx.fillStyle='#ffffff'; ctx.textAlign='center';
+  ctx.font='bold 38px sans-serif';
+  ctx.fillText(lines[0],CW/2,CH/2-10);
+  ctx.font='26px sans-serif';
+  ctx.fillText(lines[1]||'',CW/2,CH/2+32);
+
+  const tex=new THREE.CanvasTexture(cv);
+  const sw=spanW*.7;
+  const sg=new THREE.Mesh(new THREE.PlaneGeometry(sw,signH), new THREE.MeshBasicMaterial({map:tex,side:THREE.DoubleSide}));
+  sg.position.set(0,postH-signH/2-beamH/2-0.05,z); scene.add(sg);
+}
+
+function buildScenery() {
+  const R=(a,b)=>a+Math.random()*(b-a);
+  const wallX = ROAD_W/2+LS+CB+0.7;
+
+  // Trees beyond walls
+  for(let i=0;i<500;i++){
+    const side=Math.random()>.5?1:-1;
+    const xo=R(wallX+2, wallX+60);
+    addTree(side*xo, R(-ROAD_LEN,15));
+  }
+  // Urban buildings (city sections)
+  for(let i=0;i<90;i++){
+    const side=Math.random()>.5?1:-1;
+    const xo=R(wallX+6, wallX+75);
+    const z=R(-700,10);
+    const h=R(8,55); const w=R(7,20);
+    const bm=new THREE.Mesh(new THREE.BoxGeometry(w,h,w*.9),
+      new THREE.MeshLambertMaterial({color:new THREE.Color().setHSL(R(.55,.65),R(.04,.14),R(.28,.55))}));
+    bm.position.set(side*xo,h/2,z); bm.castShadow=true; scene.add(bm);
+  }
+  for(let i=0;i<55;i++){
+    const side=Math.random()>.5?1:-1;
+    const xo=R(wallX+6, wallX+65);
+    const z=R(-ROAD_LEN,-ROAD_LEN+650);
+    const h=R(6,38); const w=R(6,16);
+    const bm=new THREE.Mesh(new THREE.BoxGeometry(w,h,w),
+      new THREE.MeshLambertMaterial({color:new THREE.Color().setHSL(R(.02,.08),R(.04,.12),R(.28,.48))}));
+    bm.position.set(side*xo,h/2,z); scene.add(bm);
+  }
+  // Mountains
+  for(let i=0;i<28;i++){
+    const side=Math.random()>.5?1:-1;
+    const xo=R(90,260); const z=R(-ROAD_LEN,-400);
+    const h=R(55,160);
+    const cm=new THREE.Mesh(new THREE.ConeGeometry(R(35,80),h,5+Math.floor(Math.random()*3)),
+      new THREE.MeshLambertMaterial({color:new THREE.Color().setHSL(.3,R(.1,.22),R(.26,.42))}));
+    cm.position.set(side*xo,h/2-8,z); cm.rotation.y=Math.random()*Math.PI; scene.add(cm);
+  }
+  // Sea
+  const sm=new THREE.Mesh(new THREE.PlaneGeometry(450,900),
+    new THREE.MeshLambertMaterial({color:0x2060a0,transparent:true,opacity:.82}));
+  sm.rotation.x=-Math.PI/2; sm.position.set(-230,-0.5,-ROAD_LEN+500); scene.add(sm);
+}
+
+function addTree(x,z){
+  const h=3.5+Math.random()*7;
+  const tm=new THREE.Mesh(new THREE.CylinderGeometry(.13,.2,1.6,5),
+    new THREE.MeshLambertMaterial({color:0x5a3a1a}));
+  tm.position.set(x,.8,z); scene.add(tm);
+  const cm=new THREE.Mesh(new THREE.ConeGeometry(h*.27,h,6+Math.floor(Math.random()*3)),
+    new THREE.MeshLambertMaterial({color:new THREE.Color().setHSL(.3,.45,.2+Math.random()*.14)}));
+  cm.position.set(x,h/2+1.4,z); scene.add(cm);
+}
+
+// ═══════════════════════════════════════════════
+// VEHICLE MESH FACTORY
+// ═══════════════════════════════════════════════
+function makeVehicle(type, colorHex, bodyOpacity=1) {
+  const d = VDEFS[type];
+  const g = new THREE.Group();
+  const L=d.L, W=d.W, H=d.H;
+  const bc = new THREE.Color(colorHex);
+  const bodyM = () => new THREE.MeshLambertMaterial({color:bc, transparent:bodyOpacity < 1, opacity:bodyOpacity});
+  const darkM = () => new THREE.MeshLambertMaterial({color:new THREE.Color(bc).multiplyScalar(.58), transparent:bodyOpacity < 1, opacity:bodyOpacity});
+
+  const box = (w,h,dz,x,y,z,mat) => {
+    const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,dz),mat);
+    m.position.set(x,y,z); m.castShadow=true; g.add(m); return m;
+  };
+
+  if(type==='bike'){
+    box(W*.42,H*.5,L*.52, 0,H*.5,0, bodyM());
+    box(W*.48,H*.58,W*.45, 0,H*.88,0, new THREE.MeshLambertMaterial({color:0x1a1a1a}));
+    [[-L*.27],[L*.27]].forEach(([zo])=>{
+      const wm=new THREE.Mesh(new THREE.CylinderGeometry(.3,.3,.1,10),MAT.tire);
+      wm.rotation.z=Math.PI/2; wm.position.set(0,.3,zo); wm.castShadow=true; g.add(wm);
+    });
+  } else {
+    const bodyH = (type==='truck'||type==='dump') ? H*.42 : H*.52;
+    box(W,bodyH,L, 0,bodyH/2+.22,0, bodyM());
+
+    let rW=W*.88,rH,rL,rZ;
+    if(type==='sedan')      {rH=H*.36;rL=L*.43;rZ=L*-.04;}
+    else if(type==='kei')   {rH=H*.44;rL=L*.56;rZ=0;}
+    else if(type==='sports'){rH=H*.26;rL=L*.34;rZ=L*-.04;}
+    else if(type==='bus')   {rH=H*.47;rL=L*.87;rZ=0;}
+    else                    {rH=H*.44;rL=L*.31;rZ=L*.14;}
+    box(rW,rH,rL, 0,bodyH+rH/2+.22,rZ, bodyM());
+
+    // Windshield
+    const wm=new THREE.Mesh(new THREE.BoxGeometry(rW*.8,rH*.68,.08),MAT.glass);
+    wm.rotation.x=.28; wm.position.set(0,bodyH+rH*.44+.22,rZ-rL/2); wm.castShadow=true; g.add(wm);
+
+    // Truck/dump cargo
+    if(type==='truck'||type==='dump'){
+      const bH=H*.54,bL=L*.56;
+      const bm=box(W*.92,bH,bL, 0,bH/2+.22,-L*.24, darkM());
+      if(type==='dump') bm.rotation.x=-.13;
+    }
+    // Bus windows
+    if(type==='bus'){
+      const wsm=new THREE.Mesh(new THREE.BoxGeometry(W*.84,rH*.33,rL*.78), bodyOpacity < 1 ? new THREE.MeshLambertMaterial({color:0x7aaabb,transparent:true,opacity:Math.min(0.34, bodyOpacity*0.7)}) : MAT.glass);
+      wsm.position.set(0,bodyH+rH*.55+.22,0); g.add(wsm);
+    }
+
+    // Brake lights
+    const blG=new THREE.BoxGeometry(.24,.15,.07);
+    const bls=[-W/2+.16, W/2-.16].map(bx=>{
+      const bm=new THREE.Mesh(blG,new THREE.MeshLambertMaterial({color:0xff2020,emissive:0xff0000,emissiveIntensity:0}));
+      bm.position.set(bx,bodyH*.58+.22,L/2); g.add(bm); return bm;
+    });
+    g.userData.brakeLights=bls;
+
+    // Indicators
+    const inG=new THREE.BoxGeometry(.17,.12,.07);
+    const mkInd=ix=>{
+      const mat=new THREE.MeshLambertMaterial({color:0xffaa00,emissive:0xffaa00,emissiveIntensity:0});
+      const m=new THREE.Mesh(inG,mat); m.position.set(ix,bodyH*.58+.22,L/2); g.add(m); return m;
+    };
+    g.userData.indL=mkInd(-W/2+.46);
+    g.userData.indR=mkInd( W/2-.46);
+
+    // Wheels
+    const wr=.35,wt=.26,wb=L*.57,wtr=W/2+.03;
+    [[-wtr,-wb/2],[wtr,-wb/2],[-wtr,wb/2],[wtr,wb/2]].forEach(([wx,wz])=>{
+      const wm=new THREE.Mesh(new THREE.CylinderGeometry(wr,wr,wt,12),MAT.tire);
+      wm.rotation.z=Math.PI/2; wm.position.set(wx,wr,wz); wm.castShadow=true; g.add(wm);
+    });
+  }
+  g.traverse(c=>{ if(c.isMesh) c.receiveShadow=true; });
+  return g;
+}
+
+// ═══════════════════════════════════════════════
+// INPUT
+// ═══════════════════════════════════════════════
+const KEY={accel:false,brake:false,left:false,right:false};
+const kmap={x:'accel',z:'brake',arrowleft:'left',a:'left',arrowright:'right',d:'right'};
+addEventListener('keydown',e=>{const k=kmap[e.key.toLowerCase()]; if(k){KEY[k]=true; e.preventDefault();}});
+addEventListener('keyup',  e=>{const k=kmap[e.key.toLowerCase()]; if(k){KEY[k]=false;}});
+
+// ═══════════════════════════════════════════════
+// PLAYER
+// ═══════════════════════════════════════════════
+class Player {
+  constructor(type){
+    this.type=type;
+    this.d=VDEFS[type];
+    this.speed=0;   // m/s
+    this.yaw=0;     // world yaw (rad) — 0 = forward (-z)
+    this.steer=0;   // current effective steering
+    this.x=MERGE_X;
+    this.z=32;
+    this.lane=-1;
+    this.merged=false;
+    this.blinkT=0;
+    const col=0x02a5ad;
+    this.mesh=makeVehicle(type,col,0.52);
+    this.mesh.position.set(this.x,0,this.z);
+    scene.add(this.mesh);
+  }
+  update(dt){
+    const d=this.d;
+    const kmh=this.speed*3.6;
+
+    // Throttle / brake
+    if(KEY.accel) {
+      this.speed += d.acc*dt;
+    } else if(KEY.brake) {
+      this.speed -= d.brk*dt;
+    }
+    this.speed = Math.max(0, Math.min(d.maxSpd/3.6, this.speed));
+
+    // Steering
+    const sIn = KEY.left ? -1 : KEY.right ? 1 : 0;
+
+    // Speed-adaptive steering: reduce lane-jumpiness at higher speed.
+    // Small input changes are filtered through target steer + damping.
+    const speedRatio = clamp01(kmh / d.maxSpd);
+    const maxS = 0.022 - speedRatio * 0.010;            // 低速でも切れすぎない
+    const targetSteer = sIn * maxS;
+    const steerResponse = (sIn !== 0 ? 5.2 : 7.4) * dt; // 離したときは素早く戻す
+    this.steer += (targetSteer - this.steer) * Math.min(1, steerResponse);
+
+    // Yaw gain also drops with speed to suppress lateral over-travel.
+    const yawGain = 0.58 - speedRatio * 0.18;
+    this.yaw += this.steer * yawGain;
+
+    // Auto-stability: straighten body heading even while steering lightly.
+    const yawReturn = (0.9 + speedRatio * 1.8 + (sIn === 0 ? 1.0 : 0.0)) * dt;
+    this.yaw *= Math.max(0, 1 - yawReturn);
+
+    this.steer = Math.max(-maxS, Math.min(maxS, this.steer));
+    this.yaw = Math.max(-Math.PI/7, Math.min(Math.PI/7, this.yaw));
+
+    this.x += Math.sin(this.yaw)*this.speed*dt;
+    this.z -= Math.cos(this.yaw)*this.speed*dt;
+
+    // Boundary
+    const xMin = MERGE_X - LANE_W/2 - LS*.8;
+    const xMax = roadRightEdgeAtZ(this.z) + RS * 0.2;
+    this.x = Math.max(xMin, Math.min(xMax, this.x));
+    this.z = Math.max(-ROAD_LEN + d.L, this.z);
+
+    const activeLaneCount = laneCountAtZ(this.z);
+    if(activeLaneCount === 2){
+      const closedStartX = roadRightEdgeAtZ(this.z) - 0.18;
+      if(this.x > closedStartX){
+        this.x += (laneX(1, this.z) - this.x) * Math.min(1, dt * 10.5);
+        this.speed *= 0.998;
+      }
+    }
+    if(this.lane >= activeLaneCount){
+      this.x += (laneX(activeLaneCount - 1, this.z) - this.x) * Math.min(1, dt * 4.6);
+    }
+
+    // Lane detection
+    const xl = this.x - (-(ROAD_W/2));
+    this.lane = xl<0 ? -1 : Math.min(activeLaneCount-1, Math.floor(xl/LANE_W));
+
+    if(!this.merged && this.lane>=0){
+      this.merged=true;
+      showMsg('本線に合流しました！',2200);
+    }
+
+    // Goal
+    if(!goalDone && this.z <= ROAD_END_Z){
+      triggerGoal(false, true);
+    }
+
+    // Lights
+    this.setBrake(KEY.brake);
+    this.blinkT+=dt; if(this.blinkT>.5) this.blinkT=0;
+    const bon=this.blinkT<.25;
+    if(this.mesh.userData.indL) this.mesh.userData.indL.material.emissiveIntensity=(KEY.left &&bon)?1:0;
+    if(this.mesh.userData.indR) this.mesh.userData.indR.material.emissiveIntensity=(KEY.right&&bon)?1:0;
+    if(this.type==='bike') this.mesh.rotation.z=this.steer*8.5;
+
+    this.mesh.position.set(this.x,0,this.z);
+    this.mesh.rotation.y=-this.yaw;
+  }
+  setBrake(on){
+    if(this.mesh.userData.brakeLights)
+      this.mesh.userData.brakeLights.forEach(b=>b.material.emissiveIntensity=on?1:0);
+  }
+}
+
+// ═══════════════════════════════════════════════
+// AI VEHICLE
+// ═══════════════════════════════════════════════
+class AIVeh {
+  constructor(type,startZ,ln){
+    this.type=type;
+    this.d=VDEFS[type];
+    const ai=this.d.ai;
+    this.agg =clamp01(ai.agg +rand(-.3,.3));
+    this.perc=clamp01(ai.prc +rand(-.3,.3));
+    this.skl =clamp01(ai.skl +rand(-.3,.3));
+    const [lo,hi]=this.d.cruise;
+    const base=lo+(hi-lo)*(.3+this.agg*.7);
+    const ov=this.agg>.72?rand(10,45):this.agg*22;
+    this.tgt=(Math.max(50,base+ov+rand(-8,8)))/3.6;
+    this.speed=this.tgt*rand(.7,.95);
+    this.lane=ln; this.x=laneX(ln, startZ); this.z=startZ;
+    this.tgtX=this.x; this.changing=false;
+    this.chTimer=rand(0,3); this.chCD=rand(3,8);
+    this.winkerDir=0; this.blinkT=0;
+    this.thankT=0; this.active=true;
+    const cols=this.d.clr;
+    this.mesh=makeVehicle(type,cols[Math.floor(Math.random()*cols.length)],1);
+    this.mesh.position.set(this.x,0,this.z);
+    scene.add(this.mesh);
+  }
+  update(dt,player,others){
+    if(!this.active) return;
+    this.chTimer+=dt; this.blinkT+=dt;
+    if(this.blinkT>.5) this.blinkT=0;
+    const bon=this.blinkT<.25;
+
+    // Front detection
+    const sr=80+this.perc*40;
+    let fDist=9999,fSpd=this.tgt;
+    others.forEach(o=>{
+      if(o===this||!o.active) return;
+      if(Math.abs(o.x-this.x)<LANE_W*.7 && o.z<this.z && o.z>this.z-sr){
+        const d2=this.z-o.z;
+        if(d2<fDist){fDist=d2;fSpd=o.speed;}
+      }
+    });
+    if(player&&Math.abs(player.x-this.x)<LANE_W*.7){
+      const d2=this.z-player.z;
+      if(d2>0&&d2<fDist){fDist=d2;fSpd=player.speed;}
+    }
+
+    // IDM-ish
+    const sHW=(6+(1-this.agg)*14+this.d.L)*(1+this.speed*3.6/80);
+    let des=this.tgt,brk=false;
+    if(fDist<sHW){
+      const r=fDist/sHW;
+      des=Math.min(des,fSpd+(fSpd*r*.14));
+      if(fDist<this.d.L*1.7){des=fSpd*.62;brk=true;}
+    }
+    const ar=this.d.acc*(.4+this.skl*.6);
+    const br=this.d.brk*(.4+this.skl*.6);
+    if(this.speed<des-.5) this.speed+=ar*dt;
+    else if(this.speed>des+.5) this.speed-=br*dt;
+    this.speed=clamp(0,this.d.maxSpd/3.6,this.speed);
+    this.setBrake(brk||(this.speed<des-3));
+
+    const reductionAhead = getLaneReductionAhead(this.z, 700);
+    if(reductionAhead && this.lane > reductionAhead.to - 1){
+      this.lane = reductionAhead.to - 1;
+      this.tgtX = laneX(this.lane, this.z);
+      this.changing = true;
+      this.winkerDir = -1;
+    }
+
+    // Lane change
+    if(!this.changing&&this.chTimer>this.chCD){
+      let nl=this.lane;
+      const maxLaneHere = laneCountAtZ(this.z) - 1;
+      if(fDist<sHW*1.35&&fSpd<this.tgt*.8&&this.agg>.28&&this.lane<maxLaneHere){
+        const pendingReduction = getLaneReductionAhead(this.z, 520);
+        if(!(pendingReduction && this.lane + 1 > pendingReduction.to - 1)){
+          nl=this.lane+1; this.winkerDir=1;
+        }
+      }
+      if(this.lane>0&&this.agg<.65&&Math.random()<.018){
+        nl=this.lane-1; this.winkerDir=-1;
+      }
+      if(this.lane>0&&(this.type==='truck'||this.type==='kei')&&Math.random()<.025){
+        nl=0; this.winkerDir=-1;
+      }
+      if(nl!==this.lane){
+        const tx=laneX(nl, this.z);
+        let safe=true;
+        others.forEach(o=>{
+          if(o===this||!o.active)return;
+          if(Math.abs(o.x-tx)<LANE_W*.6&&Math.abs(o.z-this.z)<22)safe=false;
         });
-      }
-      return group;
-    }
-
-    function createSimpleTree(color = 0x4d7c3f) {
-      const g = new THREE.Group();
-      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 2.2, 6), new THREE.MeshStandardMaterial({ color: 0x6b4f2c }));
-      const crown = new THREE.Mesh(new THREE.SphereGeometry(1.15, 8, 8), new THREE.MeshStandardMaterial({ color, roughness: 1 }));
-      trunk.position.y = 1.1;
-      crown.position.y = 2.7;
-      g.add(trunk, crown);
-      return g;
-    }
-
-    function createBackground() {
-      const bg = new THREE.Group();
-      const ground = new THREE.Mesh(new THREE.PlaneGeometry(2600, 2600), new THREE.MeshStandardMaterial({ color: 0x7fa074, roughness: 1 }));
-      ground.rotation.x = -Math.PI / 2;
-      ground.position.y = -0.05;
-      ground.receiveShadow = true;
-      bg.add(ground);
-
-      for (let i = 0; i < 180; i++) {
-        const s = i * 8;
-        const frame = routeFrame(s);
-        const width = routeWidthAt(s);
-        const side = i % 2 === 0 ? -1 : 1;
-        const dist = rand(20, 52);
-        const tree = createSimpleTree(i % 5 === 0 ? 0x6f8d46 : 0x5f7d3c);
-        tree.position.copy(frame.p).add(frame.right.clone().multiplyScalar(side * (width / 2 + dist)));
-        tree.position.y = -0.02;
-        bg.add(tree);
-      }
-
-      for (let i = 0; i < 28; i++) {
-        const s = i * 45 + 30;
-        const frame = routeFrame(s);
-        const side = i % 2 === 0 ? -1 : 1;
-        const b = new THREE.Mesh(new THREE.BoxGeometry(rand(8, 20), rand(12, 34), rand(8, 20)), new THREE.MeshStandardMaterial({ color: side < 0 ? 0x98a3b3 : 0xb7c0d4 }));
-        b.position.copy(frame.p).add(frame.right.clone().multiplyScalar(side * rand(42, 72)));
-        b.position.y = b.geometry.parameters.height / 2;
-        b.castShadow = true;
-        bg.add(b);
-      }
-      return bg;
-    }
-
-    function makeLightGeom(length=0.22, height=0.12, depth=0.08, color=0x441111) {
-      return new THREE.Mesh(new THREE.BoxGeometry(length, height, depth), new THREE.MeshStandardMaterial({ color, emissive: 0x000000 }));
-    }
-
-    function createVehicleMesh(type, bodyColor) {
-      const spec = VEHICLES[type];
-      const g = new THREE.Group();
-      const mats = {
-        body: new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.78, metalness: 0.06 }),
-        dark: new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.95 }),
-        glass: new THREE.MeshStandardMaterial({ color: 0xcfd8dc, roughness: 0.2 }),
-        wheel: new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 1 }),
-        rearOff: new THREE.MeshStandardMaterial({ color: 0x3b1111, emissive: 0x000000 }),
-        frontOff: new THREE.MeshStandardMaterial({ color: 0x5f5d50, emissive: 0x000000 }),
-        turnOff: new THREE.MeshStandardMaterial({ color: 0x5a4120, emissive: 0x000000 }),
-      };
-
-      const lights = { brake: [], leftTurn: [], rightTurn: [], hazard: [] };
-      function add(mesh, x=0, y=0, z=0) { mesh.position.set(x,y,z); mesh.castShadow = true; mesh.receiveShadow = true; g.add(mesh); return mesh; }
-
-      if (type === 'sedan') {
-        add(new THREE.Mesh(new THREE.BoxGeometry(spec.width, 0.62, spec.length * 0.42), mats.body), 0, 0.46, 0.3);
-        add(new THREE.Mesh(new THREE.BoxGeometry(spec.width * 0.92, 0.42, spec.length * 0.28), mats.body), 0, 0.9, 0.75);
-        add(new THREE.Mesh(new THREE.BoxGeometry(spec.width * 0.9, 0.34, spec.length * 0.22), mats.glass), 0, 1.05, -0.05);
-        add(new THREE.Mesh(new THREE.BoxGeometry(spec.width * 0.88, 0.3, spec.length * 0.2), mats.body), 0, 0.86, -0.8);
-      } else if (type === 'kei') {
-        add(new THREE.Mesh(new THREE.BoxGeometry(spec.width, 0.75, spec.length * 0.5), mats.body), 0, 0.48, 0.1);
-        add(new THREE.Mesh(new THREE.BoxGeometry(spec.width * 0.94, 0.62, spec.length * 0.34), mats.body), 0, 1.06, 0.35);
-        add(new THREE.Mesh(new THREE.BoxGeometry(spec.width * 0.86, 0.46, spec.length * 0.18), mats.glass), 0, 1.08, -0.38);
-      } else if (type === 'sport') {
-        add(new THREE.Mesh(new THREE.BoxGeometry(spec.width, 0.42, spec.length * 0.5), mats.body), 0, 0.34, 0.2);
-        add(new THREE.Mesh(new THREE.BoxGeometry(spec.width * 0.92, 0.28, spec.length * 0.24), mats.body), 0, 0.6, 0.55);
-        add(new THREE.Mesh(new THREE.BoxGeometry(spec.width * 0.85, 0.22, spec.length * 0.22), mats.glass), 0, 0.62, -0.05);
-        add(new THREE.Mesh(new THREE.BoxGeometry(spec.width * 0.82, 0.18, spec.length * 0.18), mats.body), 0, 0.52, -0.65);
-      } else if (type === 'truck') {
-        add(new THREE.Mesh(new THREE.BoxGeometry(spec.width, 0.85, spec.length * 0.2), mats.body), 0, 0.68, -spec.length * 0.28);
-        add(new THREE.Mesh(new THREE.BoxGeometry(spec.width * 0.9, 0.7, spec.length * 0.14), mats.glass), 0, 1.18, -spec.length * 0.33);
-        add(new THREE.Mesh(new THREE.BoxGeometry(spec.width * 0.94, 1.1, spec.length * 0.54), mats.dark), 0, 0.9, spec.length * 0.13);
-      } else if (type === 'dump') {
-        add(new THREE.Mesh(new THREE.BoxGeometry(spec.width, 0.8, spec.length * 0.22), mats.body), 0, 0.66, -spec.length * 0.24);
-        add(new THREE.Mesh(new THREE.BoxGeometry(spec.width * 0.9, 0.68, spec.length * 0.14), mats.glass), 0, 1.16, -spec.length * 0.28);
-        const dumpBed = new THREE.Mesh(new THREE.BoxGeometry(spec.width * 0.94, 1.0, spec.length * 0.48), mats.dark);
-        dumpBed.rotation.x = -0.08;
-        add(dumpBed, 0, 0.9, spec.length * 0.12);
-      } else if (type === 'bus') {
-        add(new THREE.Mesh(new THREE.BoxGeometry(spec.width, 1.55, spec.length * 0.82), mats.body), 0, 1.02, 0);
-        add(new THREE.Mesh(new THREE.BoxGeometry(spec.width * 0.92, 0.52, spec.length * 0.18), mats.glass), 0, 1.38, -spec.length * 0.32);
-        add(new THREE.Mesh(new THREE.BoxGeometry(spec.width * 0.9, 0.5, spec.length * 0.58), mats.dark), 0, 1.28, 0.08);
-      } else if (type === 'bike') {
-        add(new THREE.Mesh(new THREE.BoxGeometry(spec.width * 0.35, 0.34, spec.length * 0.52), mats.body), 0, 0.52, 0.1);
-        add(new THREE.Mesh(new THREE.BoxGeometry(spec.width * 0.22, 0.24, spec.length * 0.18), mats.body), 0, 0.74, -0.36);
-        add(new THREE.Mesh(new THREE.BoxGeometry(spec.width * 0.28, 0.18, spec.length * 0.2), mats.body), 0, 0.66, 0.45);
-      }
-
-      const wheelRadius = type === 'bus' ? 0.52 : type === 'truck' || type === 'dump' ? 0.48 : type === 'sport' ? 0.42 : type === 'bike' ? 0.34 : 0.4;
-      const wheelDepth = type === 'bike' ? 0.16 : 0.28;
-      const wheelGeo = new THREE.CylinderGeometry(wheelRadius, wheelRadius, wheelDepth, 16);
-      wheelGeo.rotateZ(Math.PI / 2);
-
-      if (type === 'bike') {
-        const front = add(new THREE.Mesh(wheelGeo, mats.wheel), 0, wheelRadius, -spec.length * 0.42);
-        const rear = add(new THREE.Mesh(wheelGeo, mats.wheel), 0, wheelRadius, spec.length * 0.42);
-      } else {
-        const x = spec.width * 0.46;
-        const fz = -spec.length * 0.34;
-        const rz = spec.length * 0.3;
-        add(new THREE.Mesh(wheelGeo, mats.wheel), -x, wheelRadius, fz);
-        add(new THREE.Mesh(wheelGeo, mats.wheel), x, wheelRadius, fz);
-        add(new THREE.Mesh(wheelGeo, mats.wheel), -x, wheelRadius, rz);
-        add(new THREE.Mesh(wheelGeo, mats.wheel), x, wheelRadius, rz);
-      }
-
-      function addRearLights(z) {
-        const leftBrake = add(makeLightGeom(0.18, 0.10, 0.08, 0x3b1111), -spec.width * 0.34, 0.52, z);
-        const rightBrake = add(makeLightGeom(0.18, 0.10, 0.08, 0x3b1111), spec.width * 0.34, 0.52, z);
-        lights.brake.push(leftBrake, rightBrake);
-        const leftTurn = add(makeLightGeom(0.1, 0.1, 0.08, 0x5a4120), -spec.width * 0.44, 0.52, z);
-        const rightTurn = add(makeLightGeom(0.1, 0.1, 0.08, 0x5a4120), spec.width * 0.44, 0.52, z);
-        lights.leftTurn.push(leftTurn);
-        lights.rightTurn.push(rightTurn);
-      }
-
-      function addFrontLights(z) {
-        add(makeLightGeom(0.18, 0.10, 0.08, 0x5f5d50), -spec.width * 0.34, 0.44, z);
-        add(makeLightGeom(0.18, 0.10, 0.08, 0x5f5d50), spec.width * 0.34, 0.44, z);
-      }
-
-      addRearLights(spec.length * 0.5 - 0.05);
-      addFrontLights(-spec.length * 0.5 + 0.05);
-
-      g.userData.lights = lights;
-      return g;
-    }
-
-    function setVehicleLights(vehicle, state) {
-      const lights = vehicle.mesh.userData.lights;
-      const brakeColor = state.brake ? 0xff2222 : 0x3b1111;
-      const brakeEmissive = state.brake ? 0x660000 : 0x000000;
-      lights.brake.forEach(l => { l.material.color.setHex(brakeColor); l.material.emissive.setHex(brakeEmissive); });
-      const leftOn = state.hazard || (state.turn === 'left' && state.blinkVisible);
-      const rightOn = state.hazard || (state.turn === 'right' && state.blinkVisible);
-      lights.leftTurn.forEach(l => { l.material.color.setHex(leftOn ? 0xff9c1a : 0x5a4120); l.material.emissive.setHex(leftOn ? 0x663300 : 0x000000); });
-      lights.rightTurn.forEach(l => { l.material.color.setHex(rightOn ? 0xff9c1a : 0x5a4120); l.material.emissive.setHex(rightOn ? 0x663300 : 0x000000); });
-    }
-
-    function makeDestinationSign(mainText, subText, arrow='straight') {
-      const canvas = document.createElement('canvas');
-      canvas.width = 1024; canvas.height = 320;
-      const ctx = canvas.getContext('2d');
-      ctx.fillStyle = '#117643';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.strokeStyle = '#f6fff8';
-      ctx.lineWidth = 12;
-      ctx.strokeRect(12, 12, canvas.width - 24, canvas.height - 24);
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 64px sans-serif';
-      ctx.fillText(mainText, 70, 125);
-      ctx.font = '42px sans-serif';
-      ctx.fillText(subText, 72, 215);
-      ctx.lineWidth = 20;
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      if (arrow === 'left') {
-        ctx.moveTo(860, 240); ctx.lineTo(740, 160); ctx.lineTo(820, 160);
-        ctx.moveTo(740, 160); ctx.lineTo(740, 90);
-      } else if (arrow === 'right') {
-        ctx.moveTo(740, 240); ctx.lineTo(860, 160); ctx.lineTo(780, 160);
-        ctx.moveTo(860, 160); ctx.lineTo(860, 90);
-      } else {
-        ctx.moveTo(800, 240); ctx.lineTo(800, 90); ctx.lineTo(760, 130);
-        ctx.moveTo(800, 90); ctx.lineTo(840, 130);
-      }
-      ctx.strokeStyle = '#ffffff';
-      ctx.stroke();
-      const tex = new THREE.CanvasTexture(canvas);
-      tex.colorSpace = THREE.SRGBColorSpace;
-      const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9 });
-      const plane = new THREE.Mesh(new THREE.PlaneGeometry(10.5, 3.3), mat);
-      return plane;
-    }
-
-    function createSigns() {
-      const group = new THREE.Group();
-      const signDefs = [
-        { s: 130, main: '新名神 / 京都 / 大阪', sub: 'Shin-Meishin / Kyoto / Osaka', arrow: 'straight' },
-        { s: 310, main: '伊勢湾岸道 / 名古屋 / 伊勢', sub: 'Isewangan / Nagoya / Ise', arrow: 'left' },
-        { s: 540, main: '中央道 西方面 / 豊田', sub: 'Chuo Expwy West / Toyota', arrow: 'straight' },
-        { s: 760, main: '北九州方面 / 海沿いルート', sub: 'Kitakyushu / Bayside', arrow: 'right' },
-        { s: 1030, main: '出口 北九州 / 工業地帯', sub: 'Exit Kitakyushu / Industrial', arrow: 'right' },
-      ];
-      signDefs.forEach(def => {
-        const frame = routeFrame(def.s);
-        const width = routeWidthAt(def.s);
-        const pole = new THREE.Mesh(new THREE.BoxGeometry(0.28, 7, 0.28), new THREE.MeshStandardMaterial({ color: 0x8a939e, metalness: 0.4, roughness: 0.6 }));
-        pole.position.copy(frame.p).add(frame.right.clone().multiplyScalar(width / 2 + 0.6));
-        pole.position.y += 3.5;
-        const beam = new THREE.Mesh(new THREE.BoxGeometry(width * 0.9, 0.22, 0.24), new THREE.MeshStandardMaterial({ color: 0xaeb8c2, metalness: 0.35, roughness: 0.55 }));
-        beam.position.copy(frame.p).add(new THREE.Vector3(0, 6.9, 0));
-        beam.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), frame.right.clone().negate());
-        const sign = makeDestinationSign(def.main, def.sub, def.arrow);
-        sign.position.copy(frame.p).add(new THREE.Vector3(0, 5.25, 0));
-        sign.lookAt(frame.p.clone().sub(frame.tangent.clone().multiplyScalar(30)).add(new THREE.Vector3(0, 4, 0)));
-        group.add(pole, beam, sign);
-      });
-      return group;
-    }
-
-    const roadGroup = createRoadSegmentMesh();
-    const rails = createGuardrails();
-    const bg = createBackground();
-    const signs = createSigns();
-    world.add(bg, roadGroup, rails, signs);
-
-    const sea = new THREE.Mesh(new THREE.PlaneGeometry(1800, 1800), new THREE.MeshStandardMaterial({ color: 0x6db9d9, transparent: true, opacity: 0.88, roughness: 0.2 }));
-    sea.rotation.x = -Math.PI / 2;
-    sea.position.set(220, -0.2, 800);
-    scene.add(sea);
-
-    const player = {
-      type: 'sedan',
-      width: VEHICLES.sedan.width,
-      length: VEHICLES.sedan.length,
-      speed: 0,
-      damage: 0,
-      s: 10,
-      laneMode: 'merge',
-      laneIndex: 0,
-      laneOffset: -laneWidthAt(0) * 1.6,
-      steering: 0,
-      steerTarget: 0,
-      turn: 'off',
-      hazard: false,
-      blinkTimer: 0,
-      blinkVisible: false,
-      lastBrake: false,
-      mesh: createVehicleMesh('sedan', 0x111111),
-      goal: null,
-      merged: false,
-      allowInput: true,
-      laneChangeLock: 0,
-    };
-    scene.add(player.mesh);
-
-    const aiVehicles = [];
-    let blinkGlobal = 0;
-
-    function vehicleTargetLaneOffset(vehicle) {
-      if (vehicle.isPlayer) {
-        if (vehicle.laneMode === 'merge') {
-          const t = smoothstep(20, 92, vehicle.s);
-          return lerp(-laneWidthAt(vehicle.s) * 1.6, laneCenterOffset(0, 3, laneWidthAt(vehicle.s)), t);
-        }
-        const count = laneCountAt(vehicle.s);
-        return laneCenterOffset(clamp(vehicle.laneIndex, 0, count - 1), count, laneWidthAt(vehicle.s));
-      }
-      const count = laneCountAt(vehicle.s);
-      return laneCenterOffset(clamp(vehicle.laneIndex, 0, count - 1), count, laneWidthAt(vehicle.s));
-    }
-
-    function positionVehicle(vehicle) {
-      const frame = routeFrame(vehicle.s);
-      const targetOffset = vehicleTargetLaneOffset(vehicle);
-      vehicle.laneOffset = lerp(vehicle.laneOffset, targetOffset, vehicle.isPlayer ? 0.03 : 0.02);
-      const pos = frame.p.clone().add(frame.right.clone().multiplyScalar(vehicle.laneOffset));
-      pos.y += vehicle.isPlayer ? 0.08 : 0.02;
-      vehicle.mesh.position.copy(pos);
-      const look = frame.p.clone().add(frame.tangent);
-      vehicle.mesh.lookAt(look.add(frame.right.clone().multiplyScalar(vehicle.laneOffset)));
-      if (vehicle.isPlayer) {
-        vehicle.mesh.rotation.z = -vehicle.steering * 0.08;
+        if(player&&Math.abs(player.x-tx)<LANE_W*.6&&Math.abs(player.z-this.z)<22)safe=false;
+        if(safe){this.lane=nl;this.tgtX=tx;this.changing=true;this.chTimer=0;this.chCD=rand(3,7);}
+        else this.winkerDir=0;
       }
     }
-
-    function spawnAI(s, laneIndex, type) {
-      const spec = VEHICLES[type];
-      const color = pick(spec.colorChoices);
-      const v = {
-        isPlayer: false,
-        type,
-        width: spec.width,
-        length: spec.length,
-        s,
-        laneIndex,
-        laneOffset: laneCenterOffset(laneIndex, laneCountAt(s), laneWidthAt(s)),
-        speedLimitFollow: rand(0, 1),
-        aggression: rand(0.15, type === 'sport' ? 0.95 : type === 'dump' ? 0.7 : 0.68),
-        perception: rand(0.25, 1),
-        skill: rand(0.3, 1),
-        brake: false,
-        turn: 'off',
-        hazard: false,
-        thankHazardTimer: 0,
-        blinkVisible: false,
-        laneChangeCooldown: rand(1.2, 3.8),
-        speed: 0,
-        baseTarget: 0,
-        desiredHeadway: 18,
-        destination: pick(DESTS),
-        wantsExit: Math.random() < 0.22,
-        wantsFastLane: false,
-        bullying: false,
-        mesh: createVehicleMesh(type, color),
-      };
-      const limit = speedLimitAt(s);
-      const offset = (type === 'sport' && Math.random() < 0.12) ? rand(30, 58) : rand(-3, 16 + spec.speedBias);
-      v.baseTarget = clamp(limit + offset, 72, 182);
-      v.speed = v.baseTarget * 0.65;
-      v.desiredHeadway = lerp(28, 12, v.aggression) + lerp(4, -3, v.skill);
-      scene.add(v.mesh);
-      aiVehicles.push(v);
-      positionVehicle(v);
-      return v;
+    if(this.changing){
+      this.tgtX = laneX(Math.min(this.lane, laneCountAtZ(this.z)-1), this.z);
+      const diff=this.tgtX-this.x;
+      this.x+=diff*Math.min(1,dt*(0.9+this.skl*0.65));
+      if(Math.abs(diff)<.08){this.x=this.tgtX;this.changing=false;this.winkerDir=0;}
     }
 
-    function speedLimitAt(s) {
-      if (s < 220) return 80;
-      if (s < 620) return 100;
-      if (s < 980) return 120;
-      return 80;
+    if(this.mesh.userData.indL) this.mesh.userData.indL.material.emissiveIntensity=(this.winkerDir===-1&&bon)?1:0;
+    if(this.mesh.userData.indR) this.mesh.userData.indR.material.emissiveIntensity=(this.winkerDir===1&&bon)?1:0;
+    if(this.thankT>0){
+      this.thankT-=dt;
+      const h=bon;
+      if(this.mesh.userData.indL) this.mesh.userData.indL.material.emissiveIntensity=h?1:0;
+      if(this.mesh.userData.indR) this.mesh.userData.indR.material.emissiveIntensity=h?1:0;
     }
 
-    function initTraffic() {
-      const types = ['sedan', 'kei', 'sport', 'truck', 'dump', 'bus', 'bike'];
-      const used = [];
-      for (let i = 0; i < 28; i++) {
-        let s = rand(120, 1250);
-        let guard = 0;
-        while ((Math.abs(s - player.s) < 60 || used.some(u => Math.abs(u - s) < 18)) && guard < 40) {
-          s = rand(120, 1250);
-          guard++;
-        }
-        used.push(s);
-        const count = laneCountAt(s);
-        const lane = Math.floor(rand(0, count));
-        const t = pick(types);
-        spawnAI(s, lane, t);
+    this.z-=this.speed*dt;
+    if(laneCountAtZ(this.z) === 2){
+      this.lane = Math.min(this.lane, 1);
+      const liveRight = roadRightEdgeAtZ(this.z) - LANE_W / 2;
+      if(this.x > liveRight - 0.15){
+        this.changing = true;
+        this.winkerDir = -1;
+        this.tgtX = laneX(1, this.z);
+        this.x += (this.tgtX - this.x) * Math.min(1, dt * 14.0);
       }
     }
-    initTraffic();
+    this.mesh.position.set(this.x,0,this.z);
+    this.mesh.rotation.y=(this.x-this.tgtX)*.055;
+    if(this.z<-ROAD_LEN-60) this.despawn();
+  }
+  setBrake(on){
+    if(this.mesh.userData.brakeLights)
+      this.mesh.userData.brakeLights.forEach(b=>b.material.emissiveIntensity=on?.9:0);
+  }
+  despawn(){
+    this.active=false; scene.remove(this.mesh);
+    this.mesh.traverse(c=>{if(c.isMesh){c.geometry.dispose();if(c.material.map)c.material.map.dispose();c.material.dispose();}});
+  }
+}
 
-    const keys = new Set();
-    addEventListener('keydown', (e) => {
-      if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space','KeyX','KeyA','KeyZ','KeyD','KeyQ','KeyE'].includes(e.code)) e.preventDefault();
-      keys.add(e.code);
-      if (e.code === 'KeyQ') player.turn = player.turn === 'left' ? 'off' : 'left';
-      if (e.code === 'KeyE') player.turn = player.turn === 'right' ? 'off' : 'right';
-      if (e.code === 'Space') player.hazard = !player.hazard;
+// ═══════════════════════════════════════════════
+// TRAFFIC / COLLISION / STATE
+// ═══════════════════════════════════════════════
+const AI_LIST=[];
+const DENSITY={low:10,mid:22,high:36};
+const LOCAL_TRAFFIC_TARGET={low:{ahead:3,behind:2},mid:{ahead:5,behind:3},high:{ahead:7,behind:4}};
+const TYPE_W=['sedan','sedan','sedan','kei','kei','sports','truck','truck','dump','bus','bike'];
+let spawnT=0;
+let damage=0,collisions=0,goalDone=false;
+let distTot=0,spdSum=0,spdN=0;
+
+function spawnAI(pl){
+  const active = AI_LIST.filter(v=>v.active);
+  if(active.length>=DENSITY[trafficDensity]) return false;
+
+  const cfg = LOCAL_TRAFFIC_TARGET[trafficDensity] || LOCAL_TRAFFIC_TARGET.mid;
+  const nearbyAhead = active.filter(v => v.z < pl.z && v.z > pl.z - 340).length;
+  const nearbyBehind = active.filter(v => v.z > pl.z && v.z < pl.z + 220).length;
+  const aheadShortage = Math.max(0, cfg.ahead - nearbyAhead);
+  const behindShortage = Math.max(0, cfg.behind - nearbyBehind);
+
+  let putBehind;
+  if(aheadShortage > behindShortage) putBehind = false;
+  else if(behindShortage > aheadShortage) putBehind = true;
+  else putBehind = Math.random() < 0.35;
+
+  const tries = 12;
+  for(let i=0;i<tries;i++){
+    const z = putBehind ? pl.z + rand(70, 200) : pl.z - rand(70, 320);
+    const laneCount = laneCountAtZ(z);
+    const lanePool = laneCount === 2 ? [0,0,1,1] : [0,0,1,1,2,2];
+    const ln = lanePool[Math.floor(Math.random()*lanePool.length)];
+    const lx = laneX(ln, z);
+
+    const blockedByAI = active.some(v => Math.abs(v.z - z) < 24 && Math.abs(v.x - lx) < LANE_W * 0.7);
+    const blockedByPlayer = Math.abs(pl.z - z) < 28 && Math.abs(pl.x - lx) < LANE_W * 0.7;
+    if(blockedByAI || blockedByPlayer) continue;
+
+    const type=TYPE_W[Math.floor(Math.random()*TYPE_W.length)];
+    const ai=new AIVeh(type, z, ln);
+    AI_LIST.push(ai);
+    return true;
+  }
+  return false;
+}
+
+function checkCollisions(pl){
+  if(goalDone) return;
+  const pd=VDEFS[pl.type];
+  const ph=pd.W/2, phl=pd.L/2;
+  AI_LIST.forEach(ai=>{
+    if(!ai.active)return;
+    if(Math.abs(pl.x-ai.x)<ph+ai.d.W/2-.08&&Math.abs(pl.z-ai.z)<phl+ai.d.L/2-.08){
+      const imp=Math.max(0,Math.abs((pl.speed-ai.speed)*3.6/8));
+      damage=Math.min(100,damage+imp*2.5);
+      collisions++;
+      updateDmg();
+      if(damage>=100){triggerGoal(true);return;}
+      showMsg('接触！',700);
+      pl.speed*=.55;
+      if(Math.random()<.28) ai.thankT=1.3;
+    }
+  });
+  const xMax=roadRightEdgeAtZ(pl.z)+RS*.8;
+  const xMin=MERGE_X-LANE_W/2-LS*.75;
+  if(pl.x>xMax||pl.x<xMin){damage=Math.min(100,damage+.7);updateDmg();pl.speed*=.82;if(damage>=100)triggerGoal(true);}
+}
+
+function updateDmg(){
+  document.getElementById('dmg-fill').style.width=damage+'%';
+  document.getElementById('dmg-fill').style.background=damage<40?'#4caf50':damage<70?'#ff9800':'#f44336';
+  document.getElementById('dmg-pct').textContent=Math.round(damage)+' %';
+}
+
+let msgTO=null;
+function showMsg(t,dur=2200){
+  const e=document.getElementById('msg'); e.textContent=t; e.style.display='block';
+  if(msgTO)clearTimeout(msgTO);
+  msgTO=setTimeout(()=>e.style.display='none',dur);
+}
+
+function triggerGoal(crashed, exitedCleanly=false){
+  goalDone=true;
+  const avg=spdN>0?Math.round(spdSum/spdN):0;
+  const routeKm = getRouteKm(player ? player.z : ROAD_END_Z);
+  const title = crashed
+    ? '走行不能'
+    : exitedCleanly
+      ? `${ROUTE_POINTS[ROUTE_POINTS.length-1].name} 到着！`
+      : '区間終点に到達';
+  document.getElementById('goal-title').textContent=title;
+  document.getElementById('goal-stats').innerHTML=
+    `走行距離：${routeKm.toFixed(1)} km<br>`+
+    `平均速度：${avg} km/h<br>`+
+    `接触回数：${collisions} 回<br>`+
+    `ダメージ：${Math.round(damage)} %`;
+  document.getElementById('goal-screen').style.display='flex';
+}
+
+// ═══════════════════════════════════════════════
+// REAR ASSIST HUD
+// ═══════════════════════════════════════════════
+function updateRearAssist(pl){
+  const maxD=65;
+  const pln=Math.max(0,pl.lane);
+  ['ra-l','ra-c','ra-r'].forEach((id,i)=>{
+    const lz=pln-1+i;
+    const el=document.getElementById(id);
+    const fill=el.querySelector('.ra-fill');
+    if(lz<0||lz>=laneCountAtZ(pl.z)){fill.style.width='0%';el.classList.remove('danger','warn');return;}
+    const lx=laneX(lz, pl.z);
+    let closest=maxD,relSpd=0;
+    AI_LIST.forEach(ai=>{
+      if(!ai.active)return;
+      if(Math.abs(ai.x-lx)<LANE_W*.65&&ai.z>pl.z&&ai.z<pl.z+maxD){
+        const d2=ai.z-pl.z;
+        if(d2<closest){closest=d2;relSpd=ai.speed-pl.speed;}
+      }
     });
-    addEventListener('keyup', (e) => keys.delete(e.code));
+    const alpha=1-closest/maxD;
+    fill.style.width=(alpha*100)+'%';
+    el.classList.toggle('danger',closest<18&&relSpd>6);
+    el.classList.toggle('warn',  closest<35&&relSpd>3&&!(closest<18&&relSpd>6));
+  });
+}
 
-    function findFrontVehicle(target, laneIndex = target.laneIndex, maxDist = 120) {
-      let best = null, bestDist = Infinity;
-      aiVehicles.forEach(v => {
-        if (v === target) return;
-        if (laneCountAt(v.s) !== laneCountAt(target.s)) return;
-        if (v.laneIndex !== laneIndex) return;
-        const d = v.s - target.s;
-        if (d > 0 && d < bestDist && d < maxDist) { bestDist = d; best = v; }
-      });
-      if (target !== player && player.laneMode !== 'merge' && target.laneIndex === player.laneIndex && laneCountAt(player.s) === laneCountAt(target.s)) {
-        const d = player.s - target.s;
-        if (d > 0 && d < bestDist && d < maxDist) { bestDist = d; best = player; }
-      }
-      return { vehicle: best, distance: bestDist };
-    }
+// ═══════════════════════════════════════════════
+// SPEEDOMETER
+// ═══════════════════════════════════════════════
+const SC=document.getElementById('spdcv'), SX=SC.getContext('2d');
+function drawSpeedo(kmh){
+  SX.clearRect(0,0,220,220);
+  const cx=110,cy=110,r=95;
+  // Track
+  SX.beginPath(); SX.arc(cx,cy,r,Math.PI*.75,Math.PI*2.25);
+  SX.strokeStyle='rgba(255,255,255,0.07)'; SX.lineWidth=15; SX.stroke();
+  // Fill
+  const pct=Math.min(1,kmh/220);
+  const col=kmh<100?'#4caf50':kmh<160?'#ff9800':'#f44336';
+  SX.beginPath(); SX.arc(cx,cy,r,Math.PI*.75,Math.PI*.75+pct*Math.PI*1.5);
+  SX.strokeStyle=col; SX.lineWidth=15; SX.lineCap='round'; SX.stroke();
+  // Number
+  SX.fillStyle='#fff'; SX.font='bold 40px sans-serif'; SX.textAlign='center';
+  SX.fillText(Math.round(kmh),cx,cy+12);
+  SX.fillStyle='#666'; SX.font='12px sans-serif';
+  SX.fillText('km/h',cx,cy+30);
+}
 
-    function findRearVehicle(target, laneIndex = target.laneIndex, maxDist = 90) {
-      let best = null, bestDist = Infinity;
-      aiVehicles.forEach(v => {
-        if (v === target) return;
-        if (laneCountAt(v.s) !== laneCountAt(target.s)) return;
-        if (v.laneIndex !== laneIndex) return;
-        const d = target.s - v.s;
-        if (d > 0 && d < bestDist && d < maxDist) { bestDist = d; best = v; }
-      });
-      if (target !== player && player.laneMode !== 'merge' && target.laneIndex === player.laneIndex && laneCountAt(player.s) === laneCountAt(target.s)) {
-        const d = target.s - player.s;
-        if (d > 0 && d < bestDist && d < maxDist) { bestDist = d; best = player; }
-      }
-      return { vehicle: best, distance: bestDist };
-    }
+// ═══════════════════════════════════════════════
+// CAMERA
+// ═══════════════════════════════════════════════
+let camX=0,camSX=0,camZ=30;
+function updateCam(pl){
+  const behind=4.2+pl.speed*.02;
+  const above=2.0+pl.speed*.004;
+  camSX+=(pl.x-camSX)*.11;
+  camX+=(camSX-camX)*.15;
+  camZ+=(pl.z+behind-camZ)*.2;
+  camera.position.set(camX,above,camZ);
+  camera.lookAt(pl.x,0.45,pl.z-16);
+}
 
-    function laneSafeFor(vehicle, laneIndex) {
-      if (laneIndex < 0 || laneIndex >= laneCountAt(vehicle.s)) return false;
-      const front = findFrontVehicle(vehicle, laneIndex, 45);
-      const rear = findRearVehicle(vehicle, laneIndex, 35);
-      return (!front.vehicle || front.distance > vehicle.length + 12) && (!rear.vehicle || rear.distance > 12);
-    }
+// ═══════════════════════════════════════════════
+// SKY
+// ═══════════════════════════════════════════════
+function updateSky(pl){
+  const p=Math.min(1,Math.abs(pl.z)/ROAD_LEN);
+  // Cool blue morning → warm afternoon
+  const h=.59-p*.12, s=.52+p*.1, l=.74-p*.16;
+  const sky=new THREE.Color().setHSL(h,s,l);
+  scene.background=sky;
+  scene.fog.color=sky;
+}
 
-    function updatePlayer(dt) {
-      if (!player.allowInput) return;
-      const accel = keys.has('KeyX') || keys.has('ArrowUp');
-      const brake = keys.has('KeyZ') || keys.has('ArrowDown');
-      const left = keys.has('KeyA') || keys.has('ArrowLeft');
-      const right = keys.has('KeyD') || keys.has('ArrowRight');
-      const speedLimit = speedLimitAt(player.s);
-      const maxSpeed = 210;
-      if (accel) player.speed += 32 * dt;
-      else if (!brake) player.speed += (Math.max(speedLimit - 8, player.speed) - player.speed) * 0.12 * dt * 60;
-      if (brake) player.speed -= 46 * dt;
-      player.speed -= 0.65 * dt;
-      player.speed = clamp(player.speed, 0, maxSpeed);
+// ═══════════════════════════════════════════════
+// UTILS
+// ═══════════════════════════════════════════════
+const rand=(a,b)=>a+Math.random()*(b-a);
+const clamp=(a,b,v)=>Math.max(a,Math.min(b,v));
+const clamp01=v=>clamp(0,1,v);
 
-      player.steerTarget = 0;
-      if (left) player.steerTarget -= 1;
-      if (right) player.steerTarget += 1;
-      const steerRate = player.speed > 100 ? 3.6 : 5.2;
-      player.steering = lerp(player.steering, player.steerTarget, dt * steerRate);
-      const laneCount = laneCountAt(player.s);
+// ═══════════════════════════════════════════════
+// GAME LOOP
+// ═══════════════════════════════════════════════
+let player=null, started=false, lastT=null;
+let selectedVehicle='sedan', trafficDensity='mid';
+let spawnT2=0;
 
-      if (player.laneChangeLock === undefined) player.laneChangeLock = 0;
-      player.laneChangeLock = Math.max(0, player.laneChangeLock - dt);
-      if (player.laneMode !== 'merge' && player.laneChangeLock <= 0) {
-        if (player.steering < -0.7) {
-          player.laneIndex = clamp(player.laneIndex - 1, 0, laneCount - 1);
-          player.laneChangeLock = 0.75;
-        }
-        if (player.steering > 0.7) {
-          player.laneIndex = clamp(player.laneIndex + 1, 0, laneCount - 1);
-          player.laneChangeLock = 0.75;
-        }
-      }
-      player.steering *= 0.92;
-      const travel = player.speed / 3.6;
-      player.s += travel * dt;
+document.querySelectorAll('[data-v]').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('[data-v]').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on'); selectedVehicle=b.dataset.v;
+}));
+document.querySelectorAll('[data-t]').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('[data-t]').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on'); trafficDensity=b.dataset.t;
+}));
 
-      if (!player.merged && player.s > 74) {
-        player.merged = true;
-        player.laneMode = 'main';
-        player.laneIndex = 0;
-        messageEl.textContent = '本線へ合流完了。標識を見てルートを選択してください。';
-      }
+document.getElementById('go-btn').addEventListener('click',()=>{
+  document.getElementById('start-screen').style.display='none';
+  buildRoad();
+  player=new Player(selectedVehicle);
+  camX=player.x; camSX=player.x; camZ=player.z+4.2;
+  camera.position.set(camX,3.4,camZ);
+  document.getElementById('h-vtype').textContent=VDEFS[selectedVehicle].name;
+  for(let i=0;i<12;i++) spawnAI(player);
+  showMsg('Xキー：アクセル　Zキー：ブレーキ\n本線へ合流してください',4500);
+  started=true;
+});
 
-      if (player.s > 720 && player.goal === null) {
-        messageEl.textContent = '分岐が近いです。左へ寄ると名古屋方面、右へ寄ると北九州方面。';
-        if (player.laneIndex <= 0) player.goal = DESTS.find(d => d.key === 'nagoya');
-        else if (player.laneIndex >= 2) player.goal = DESTS.find(d => d.key === 'hakata');
-      }
+function loop(t){
+  requestAnimationFrame(loop);
+  if(!started||goalDone){renderer.render(scene,camera);return;}
+  const dt=lastT?Math.min((t-lastT)/1000,.05):.016;
+  lastT=t;
 
-      if (player.s > 995) {
-        if (player.goal?.key === 'hakata' && player.laneIndex >= 1) {
-          finishRun('出口到達', `出口を離脱し、<strong>${player.goal.label}</strong> に到着しました。看板どおりのルート選択です。`);
-        } else if (player.goal?.key === 'nagoya' && player.laneIndex <= 0) {
-          finishRun('出口到達', `出口を離脱し、<strong>${player.goal.label}</strong> に到着しました。左ルートの到達判定です。`);
-        }
-      }
+  player.update(dt);
+  distTot+=player.speed*dt;
+  const kmh=player.speed*3.6;
+  spdSum+=kmh; spdN++;
 
-      const front = findFrontVehicle(player, player.laneIndex, 36);
-      if (player.laneMode !== 'merge' && front.vehicle) {
-        const closing = player.speed - front.vehicle.speed;
-        if (front.distance < 10 + Math.max(0, closing * 0.1)) {
-          player.speed = Math.max(0, player.speed - 52 * dt);
-          addDamage(0.25 * dt * (12 + Math.max(closing, 0)));
-        }
-      }
+  spawnT2+=dt;
+  if(spawnT2>0.45){
+    spawnT2=0;
+    spawnAI(player);
+    if(Math.random()<0.55) spawnAI(player);
+  }
 
-      player.blinkTimer += dt;
-      if (player.blinkTimer > 0.42) {
-        player.blinkTimer = 0;
-        player.blinkVisible = !player.blinkVisible;
-      }
-      const brakeState = brake || player.speed < (speedEl.value || 0);
-      setVehicleLights(player, { brake: brake, turn: player.turn, hazard: player.hazard, blinkVisible: player.blinkVisible });
-    }
+  const active=AI_LIST.filter(v=>v.active);
+  active.forEach(ai=>ai.update(dt,player,active));
 
-    function addDamage(amount) {
-      player.damage = clamp(player.damage + amount, 0, 100);
-      if (player.damage >= 100) {
-        finishRun('走行不能', 'ダメージ度が 100 に達し、車両が停止しました。軽微ペナルティ制の上限です。');
-      }
-    }
+  checkCollisions(player);
+  updateCam(player);
+  updateRearAssist(player);
+  updateSky(player);
 
-    function finishRun(title, body) {
-      if (!player.allowInput) return;
-      player.allowInput = false;
-      endTitle.innerHTML = title;
-      endBody.innerHTML = body + `<br><br>最終速度: ${Math.round(player.speed)} km/h<br>ダメージ: ${Math.round(player.damage)} / 100`;
-      endScreen.style.display = 'flex';
-      messageEl.textContent = title;
-    }
+  const routeKm = getRouteKm(player.z);
 
-    function updateAI(dt) {
-      const playerLaneCount = laneCountAt(player.s);
-      aiVehicles.forEach(v => {
-        v.laneChangeCooldown -= dt;
-        const limit = speedLimitAt(v.s);
-        const front = findFrontVehicle(v, v.laneIndex, 130);
-        const rear = findRearVehicle(v, v.laneIndex, 60);
-        let desired = clamp(v.baseTarget, 55, Math.min(180, limit + (v.type === 'sport' ? 25 : 16)));
+  // HUD
+  drawSpeedo(kmh);
+  document.getElementById('h-dist').textContent=routeKm.toFixed(1)+' km';
+  document.getElementById('h-seg').textContent=getRouteSectionLabel(routeKm);
+  document.getElementById('h-lane').textContent = laneLabel(player.lane, player.z);
 
-        if (front.vehicle) {
-          const closing = v.speed - front.vehicle.speed;
-          const threshold = v.desiredHeadway + Math.max(0, closing * 0.5);
-          if (front.distance < threshold) desired = Math.min(desired, (front.vehicle.speed || 0) - rand(0, 4));
-          if (front.distance < threshold * 0.8 && v.laneChangeCooldown <= 0) {
-            const count = laneCountAt(v.s);
-            const preferFast = Math.random() < (0.24 + v.aggression * 0.45);
-            const leftCandidate = v.laneIndex - 1;
-            const rightCandidate = v.laneIndex + 1;
-            let moved = false;
-            if (count > 1) {
-              if (preferFast && rightCandidate < count && laneSafeFor(v, rightCandidate)) {
-                v.laneIndex = rightCandidate;
-                v.turn = 'right';
-                v.laneChangeCooldown = rand(2.5, 5.5);
-                moved = true;
-              } else if (leftCandidate >= 0 && laneSafeFor(v, leftCandidate) && Math.random() < 0.65) {
-                v.laneIndex = leftCandidate;
-                v.turn = 'left';
-                v.laneChangeCooldown = rand(2.5, 5.5);
-                moved = true;
-              }
-            }
-            if (!moved) desired = Math.min(desired, front.vehicle.speed - 4);
-          }
-        } else {
-          const leftBias = VEHICLES[v.type].leftBias;
-          if (v.laneChangeCooldown <= 0 && v.laneIndex > 0 && Math.random() < leftBias * dt * 0.8 && laneSafeFor(v, v.laneIndex - 1)) {
-            v.laneIndex -= 1;
-            v.turn = 'left';
-            v.laneChangeCooldown = rand(2.3, 5.0);
-          }
-        }
-
-        const playerBehindFast = !player.hazard && !player.allowInput ? false : (player.s < v.s ? null : null);
-        const playerRearGap = v.s - player.s;
-        if (player.laneMode !== 'merge' && player.laneIndex === v.laneIndex && playerRearGap < 0 && Math.abs(playerRearGap) < 45) {
-          const gap = player.s - v.s;
-          if (gap > 0 && gap < 30 && (player.speed - v.speed) > 20 && v.laneIndex > 0 && v.perception > 0.55) {
-            if (laneSafeFor(v, v.laneIndex - 1)) {
-              v.laneIndex -= 1;
-              v.turn = 'left';
-              v.laneChangeCooldown = rand(2.0, 4.2);
-            }
-          }
-        }
-
-        // Exit intentions.
-        if (v.wantsExit && v.s > 900 && v.laneIndex > 0 && v.laneChangeCooldown <= 0 && laneSafeFor(v, v.laneIndex - 1)) {
-          v.laneIndex -= 1;
-          v.turn = 'left';
-          v.laneChangeCooldown = rand(1.8, 3.5);
-        }
-        if (v.wantsExit && v.s > 1020 && v.laneIndex === 0) {
-          v.s += 20 * dt;
-          v.laneOffset -= 0.8 * dt;
-          if (v.s > 1080) v.remove = true;
-        }
-
-        const accelRate = lerp(2.0, 4.6, v.skill);
-        const brakeRate = lerp(3.2, 6.0, v.perception);
-        if (v.speed < desired) v.speed += accelRate * dt * 8;
-        else v.speed -= brakeRate * dt * 8;
-        v.speed = clamp(v.speed, 35, 190);
-        v.brake = desired < v.speed - 2.5;
-
-        // Simulate bullying: fast sports cars behind player in fast lane.
-        v.bullying = false;
-        if (v.type === 'sport' && v.aggression > 0.72 && player.laneMode !== 'merge') {
-          if (v.s < player.s && (player.s - v.s) < 60 && player.laneIndex === v.laneIndex && v.speed > player.speed + 18 && v.laneIndex >= 1) {
-            v.turn = 'right';
-            v.bullying = true;
-          }
-        }
-
-        if (v.turn !== 'off' && v.laneChangeCooldown < 1.2) v.turn = 'off';
-        if (v.thankHazardTimer > 0) {
-          v.thankHazardTimer -= dt;
-          v.hazard = true;
-        } else {
-          v.hazard = false;
-        }
-
-        v.s += (v.speed / 3.6) * dt;
-        v.blinkVisible = Math.floor(performance.now() / 420) % 2 === 0;
-        setVehicleLights(v, { brake: v.brake, turn: v.turn, hazard: v.hazard, blinkVisible: v.blinkVisible });
-        positionVehicle(v);
-
-        if (Math.abs(v.s - player.s) > 380 || v.remove) {
-          scene.remove(v.mesh);
-          v.dead = true;
-        }
-      });
-      for (let i = aiVehicles.length - 1; i >= 0; i--) if (aiVehicles[i].dead) aiVehicles.splice(i, 1);
-
-      // Keep density random.
-      const desiredCount = 24 + Math.floor(8 * (0.5 + 0.5 * Math.sin(performance.now() * 0.00007)));
-      while (aiVehicles.length < desiredCount) {
-        const ahead = Math.random() < 0.68;
-        const baseS = player.s + (ahead ? rand(60, 300) : -rand(60, 220));
-        const clampedS = clamp(baseS, 40, 1280);
-        const count = laneCountAt(clampedS);
-        const lane = Math.floor(rand(0, count));
-        const roll = Math.random();
-        const type = roll < 0.3 ? 'sedan' : roll < 0.48 ? 'kei' : roll < 0.58 ? 'sport' : roll < 0.74 ? 'truck' : roll < 0.82 ? 'dump' : roll < 0.9 ? 'bus' : 'bike';
-        spawnAI(clampedS, lane, type);
-      }
-    }
-
-    function updateRearAssist() {
-      const segments = { left: { dist: Infinity, rel: 0, pressure: false }, center: { dist: Infinity, rel: 0, pressure: false }, right: { dist: Infinity, rel: 0, pressure: false } };
-      aiVehicles.forEach(v => {
-        const d = player.s - v.s;
-        if (d <= 0 || d > 120) return;
-        const laneDelta = v.laneIndex - player.laneIndex;
-        const key = laneDelta < 0 ? 'left' : laneDelta > 0 ? 'right' : 'center';
-        if (d < segments[key].dist) {
-          segments[key].dist = d;
-          segments[key].rel = v.speed - player.speed;
-          segments[key].pressure = v.bullying && key === 'right';
-        }
-      });
-      Object.entries(segments).forEach(([key, seg]) => {
-        const el = assistEls[key];
-        if (seg.dist === Infinity) {
-          el.style.opacity = 0;
-          el.style.filter = 'saturate(1) brightness(1)';
-          return;
-        }
-        let alpha = clamp(1 - seg.dist / 95, 0, 1);
-        if (seg.rel > 12) alpha = clamp(alpha + 0.2, 0, 1);
-        if (seg.pressure) alpha = clamp(alpha + 0.24, 0, 1);
-        el.style.opacity = alpha.toFixed(3);
-        el.style.filter = `saturate(${seg.pressure ? 1.65 : 1.1}) brightness(${seg.rel > 15 ? 1.12 : 1})`;
-      });
-    }
-
-    function updateHUD() {
-      speedEl.textContent = Math.round(player.speed);
-      const laneName = player.laneMode === 'merge' ? '合流車線' : `${player.laneIndex + 1} 車線`;
-      laneTextEl.textContent = laneName;
-      const s = player.s;
-      sectionTextEl.textContent = s < 240 ? '都市高架導入区間' : s < 620 ? '中央道風山間区間' : s < 980 ? '西方面接続区間' : '北九州到達区間';
-      destinationTextEl.textContent = player.goal ? `${player.goal.label} / ${player.goal.en}` : '大阪 / 京都 / 名古屋 方面';
-      damageTextEl.textContent = Math.round(player.damage);
-      damageBarEl.style.width = `${player.damage}%`;
-      if (player.goal?.key === 'hakata' && player.s > 900) messageEl.textContent = '右ルートが北九州方面出口です。右側案内を確認してください。';
-      if (player.goal?.key === 'nagoya' && player.s > 900) messageEl.textContent = '左ルートが名古屋方面出口です。左車線へ寄ってください。';
-    }
-
-    function updateSky() {
-      const t = clamp(player.s / 1200, 0, 1);
-      const { top, fog } = skyForProgress(t);
-      renderer.setClearColor(top);
-      scene.fog.color.copy(fog);
-      hemi.color.copy(top.clone().multiplyScalar(1.08));
-      sun.color.copy(t < 0.7 ? new THREE.Color(0xffffff) : new THREE.Color(0xffd0aa));
-      sun.intensity = lerp(1.18, 0.74, t);
-    }
-
-    function cameraFollow(dt) {
-      const frame = routeFrame(player.s);
-      const targetPos = player.mesh.position.clone();
-      const back = frame.tangent.clone().multiplyScalar(-7.8 - player.speed * 0.022);
-      const rise = new THREE.Vector3(0, 2.35, 0);
-      const camPos = targetPos.clone().add(back).add(rise).add(frame.right.clone().multiplyScalar(0.18));
-      camera.position.lerp(camPos, 1 - Math.exp(-dt * 6.0));
-      const look = targetPos.clone().add(frame.tangent.clone().multiplyScalar(10.5)).add(new THREE.Vector3(0, 0.95, 0));
-      camera.lookAt(look);
-    }
-
-    function updateCollisions(dt) {
-      aiVehicles.forEach(v => {
-        const longitudinal = Math.abs(v.s - player.s);
-        const lengthOverlap = (player.length + v.length) * 0.52;
-        if (longitudinal > lengthOverlap) return;
-        const lateral = Math.abs(v.laneOffset - player.laneOffset);
-        const widthOverlap = (player.width + v.width) * 0.48;
-        if (lateral > widthOverlap || !player.allowInput) return;
-        const relSpeed = Math.abs(player.speed - v.speed);
-        const impactBase = ((lengthOverlap - longitudinal) / Math.max(0.1, lengthOverlap)) + ((widthOverlap - lateral) / Math.max(0.1, widthOverlap));
-        const impact = clamp(impactBase * 6 + relSpeed * 0.06, 0.8, 14);
-        addDamage(impact * dt * 1.4);
-        player.speed = Math.max(0, player.speed - impact * 0.12);
-      });
-    }
-
-    function tick(dt) {
-      updatePlayer(dt);
-      updateAI(dt);
-      updateCollisions(dt);
-      updateRearAssist();
-      updateHUD();
-      updateSky();
-      positionVehicle({ ...player, isPlayer: true, mesh: player.mesh, width: player.width, length: player.length, s: player.s, laneMode: player.laneMode, laneIndex: player.laneIndex, laneOffset: player.laneOffset, steering: player.steering });
-      positionVehicle(player);
-      cameraFollow(dt);
-      renderer.render(scene, camera);
-    }
-
-    let last = performance.now();
-    function animate(now) {
-      const dt = Math.min(0.05, (now - last) / 1000);
-      last = now;
-      tick(dt);
-      requestAnimationFrame(animate);
-    }
-
-    positionVehicle(player);
-    cameraFollow(1/60);
-    updateSky();
-    requestAnimationFrame(animate);
-
-    addEventListener('resize', () => {
-      camera.aspect = innerWidth / innerHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(innerWidth, innerHeight);
-    });
-  </script>
+  renderer.render(scene,camera);
+}
+requestAnimationFrame(loop);
+</script>
 </body>
 </html>
