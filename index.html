@@ -108,7 +108,7 @@ body { background:#000; overflow:hidden; font-family:'Segoe UI',sans-serif; }
 
 <div id="start-screen">
   <h1>高速道路ドライブ</h1>
-  <div class="sub-t">Highway Drive Simulator — Prototype v0.15</div>
+  <div class="sub-t">Highway Drive Simulator — Prototype v0.16</div>
   <div class="sel-lbl">車種</div>
   <div class="btn-row" id="vsel">
     <button class="sel-btn on" data-v="sedan">セダン</button>
@@ -161,7 +161,7 @@ body { background:#000; overflow:hidden; font-family:'Segoe UI',sans-serif; }
     <span>← →</span>：ステアリング
   </div>
   <div id="msg"></div>
-  <div id="ver-badge">Version v15</div>
+  <div id="ver-badge">Version v16</div>
 </div>
 
 <canvas id="canvas"></canvas>
@@ -1055,6 +1055,9 @@ class AIVeh {
     const ov=this.agg>.72?rand(10,45):this.agg*22;
     this.tgt=(Math.max(50,base+ov+rand(-8,8)))/3.6;
     this.speed=this.tgt*rand(.7,.95);
+    this.longAcc=0;
+    this.latVel=0;
+    this.latAcc=0;
     this.lane=ln; this.x=laneX(ln, startZ); this.z=startZ;
     this.tgtX=this.x; this.changing=false;
     this.chTimer=rand(0,3); this.chCD=rand(3,8);
@@ -1072,7 +1075,7 @@ class AIVeh {
     const bon=this.blinkT<.25;
 
     // Front detection
-    const sr=80+this.perc*40;
+    const sr=90+this.perc*50;
     let fDist=9999,fSpd=this.tgt;
     others.forEach(o=>{
       if(o===this||!o.active) return;
@@ -1086,20 +1089,30 @@ class AIVeh {
       if(d2>0&&d2<fDist){fDist=d2;fSpd=player.speed;}
     }
 
-    // IDM-ish
-    const sHW=(6+(1-this.agg)*14+this.d.L)*(1+this.speed*3.6/80);
+    // Longitudinal control: target speed with acceleration and headway opening
+    const safeGap = 8 + this.d.L + this.speed*1.15 + Math.max(0, this.speed - fSpd) * 1.8;
     let des=this.tgt,brk=false;
-    if(fDist<sHW){
-      const r=fDist/sHW;
-      des=Math.min(des,fSpd+(fSpd*r*.14));
-      if(fDist<this.d.L*1.7){des=fSpd*.62;brk=true;}
+    if(fDist<safeGap*1.9){
+      const closeness = clamp01((safeGap*1.9 - fDist) / (safeGap*1.9));
+      des=Math.min(des, fSpd + (1-closeness)*2.2 - closeness*1.2);
+      if(fDist<safeGap){
+        des=Math.min(des, fSpd - Math.min(3.2, (safeGap-fDist)*0.2));
+      }
+      if(fDist<this.d.L*1.9){brk=true;}
     }
-    const ar=this.d.acc*(.4+this.skl*.6);
-    const br=this.d.brk*(.4+this.skl*.6);
-    if(this.speed<des-.5) this.speed+=ar*dt;
-    else if(this.speed>des+.5) this.speed-=br*dt;
-    this.speed=clamp(0,this.d.maxSpd/3.6,this.speed);
-    this.setBrake(brk||(this.speed<des-3));
+    const ar=this.d.acc*(.38+this.skl*.52);
+    const br=this.d.brk*(.42+this.skl*.56);
+    let desiredAcc = 0;
+    if(this.speed < des - 0.18) desiredAcc = ar * clamp01((des - this.speed) / 5.0);
+    else if(this.speed > des + 0.18) desiredAcc = -br * clamp01((this.speed - des) / 4.0);
+    if(fDist < safeGap*0.82){
+      const emergency = clamp01((safeGap*0.82 - fDist) / Math.max(1, safeGap*0.82));
+      desiredAcc = Math.min(desiredAcc, -br * (0.35 + emergency*0.9));
+      brk = true;
+    }
+    this.longAcc += (desiredAcc - this.longAcc) * Math.min(1, dt * 2.6);
+    this.speed = clamp(0,this.d.maxSpd/3.6,this.speed + this.longAcc*dt);
+    this.setBrake(brk || this.longAcc < -0.7);
 
     const reductionAhead = getLaneReductionAhead(this.z, 900);
     if(reductionAhead && this.lane > reductionAhead.to - 1){
@@ -1109,11 +1122,11 @@ class AIVeh {
       this.winkerDir = -1;
     }
 
-    // Lane change
+    // Lane change decision
     if(!this.changing&&this.chTimer>this.chCD){
       let nl=this.lane;
       const maxLaneHere = laneCountAtZ(this.z) - 1;
-      if(fDist<sHW*1.35&&fSpd<this.tgt*.8&&this.agg>.28&&this.lane<maxLaneHere){
+      if(fDist<safeGap*1.45&&fSpd<this.tgt*.84&&this.agg>.28&&this.lane<maxLaneHere){
         const pendingReduction = getLaneReductionAhead(this.z, 700);
         if(!(pendingReduction && this.lane + 1 > pendingReduction.to - 1)){
           nl=this.lane+1; this.winkerDir=1;
@@ -1130,18 +1143,51 @@ class AIVeh {
         let safe=true;
         others.forEach(o=>{
           if(o===this||!o.active)return;
-          if(Math.abs(o.x-tx)<LANE_W*.6&&Math.abs(o.z-this.z)<22)safe=false;
+          if(Math.abs(o.x-tx)<LANE_W*.6&&Math.abs(o.z-this.z)<24)safe=false;
         });
-        if(player&&Math.abs(player.x-tx)<LANE_W*.6&&Math.abs(player.z-this.z)<22)safe=false;
-        if(safe){this.lane=nl;this.tgtX=tx;this.changing=true;this.chTimer=0;this.chCD=rand(6,12);}
-        else this.winkerDir=0;
+        if(player&&Math.abs(player.x-tx)<LANE_W*.6&&Math.abs(player.z-this.z)<24)safe=false;
+        if(safe){
+          this.lane=nl;
+          this.tgtX=tx;
+          this.changing=true;
+          this.chTimer=0;
+          this.chCD=rand(6,12);
+        } else this.winkerDir=0;
       }
     }
+
+    // Lateral motion: target lane with lateral velocity and acceleration
     if(this.changing){
       this.tgtX = laneX(Math.min(this.lane, laneCountAtZ(this.z)-1), this.z);
-      const diff=this.tgtX-this.x;
-      this.x+=diff*Math.min(1,dt*(0.225+this.skl*0.1625));
-      if(Math.abs(diff)<.08){this.x=this.tgtX;this.changing=false;this.winkerDir=0;}
+    }
+    let diff=this.tgtX-this.x;
+    const nearClosedLane = laneCountAtZ(this.z) === 2 && this.x > roadRightEdgeAtZ(this.z) - LANE_W/2 - 0.15;
+    if(nearClosedLane){
+      this.lane = Math.min(this.lane, 1);
+      this.changing = true;
+      this.winkerDir = -1;
+      this.tgtX = laneX(1, this.z);
+      diff = this.tgtX - this.x;
+    }
+    const dir = Math.sign(diff);
+    const maxLatSpeed = 0.28 + this.skl*0.10; // slower, about quarter-speed lane changes
+    const maxLatAcc = 0.30 + this.skl*0.14;
+    let desiredLatVel = 0;
+    if(Math.abs(diff) > 0.02){
+      desiredLatVel = dir * Math.min(maxLatSpeed, Math.sqrt(Math.abs(diff))*0.34 + 0.05);
+    }
+    const desiredLatAcc = clamp(-maxLatAcc, maxLatAcc, (desiredLatVel - this.latVel) * 2.2);
+    this.latAcc += (desiredLatAcc - this.latAcc) * Math.min(1, dt * 4.0);
+    this.latVel += this.latAcc * dt;
+    this.latVel = clamp(-maxLatSpeed, maxLatSpeed, this.latVel);
+    if(Math.abs(diff) < 0.06 && Math.abs(this.latVel) < 0.03){
+      this.x = this.tgtX;
+      this.latVel = 0;
+      this.latAcc = 0;
+      this.changing = false;
+      this.winkerDir = 0;
+    } else {
+      this.x += this.latVel * dt;
     }
 
     if(this.mesh.userData.indL) this.mesh.userData.indL.material.emissiveIntensity=(this.winkerDir===-1&&bon)?1:0;
@@ -1154,18 +1200,8 @@ class AIVeh {
     }
 
     this.z-=this.speed*dt;
-    if(laneCountAtZ(this.z) === 2){
-      this.lane = Math.min(this.lane, 1);
-      const liveRight = roadRightEdgeAtZ(this.z) - LANE_W / 2;
-      if(this.x > liveRight - 0.15){
-        this.changing = true;
-        this.winkerDir = -1;
-        this.tgtX = laneX(1, this.z);
-        this.x += (this.tgtX - this.x) * Math.min(1, dt * 3.5);
-      }
-    }
     this.mesh.position.set(this.x,0,this.z);
-    this.mesh.rotation.y=(this.x-this.tgtX)*.055;
+    this.mesh.rotation.y = clamp(-0.16, 0.16, this.latVel * 0.55);
     if(player && (this.z < player.z - 700 || this.z > player.z + 480)) this.despawn();
     else if(this.z<-ROAD_LEN-60) this.despawn();
   }
