@@ -56,6 +56,12 @@ body { background:#000; overflow:hidden; font-family:'Segoe UI',sans-serif; }
   border-radius:7px; padding:7px 11px; font-size:10px; color:#556; line-height:1.9;
 }
 #keyguide span { color:#889; }
+#ver-badge {
+  position:absolute; top:14px; left:50%; transform:translateX(-50%);
+  color:#9fc7d0; background:rgba(0,0,0,0.5); border:1px solid rgba(255,255,255,0.12);
+  border-radius:999px; padding:5px 12px; font-size:11px; letter-spacing:.8px;
+  backdrop-filter:blur(3px);
+}
 /* Start */
 #start-screen {
   position:fixed; top:0; left:0; width:100%; height:100%; z-index:100;
@@ -102,7 +108,7 @@ body { background:#000; overflow:hidden; font-family:'Segoe UI',sans-serif; }
 
 <div id="start-screen">
   <h1>高速道路ドライブ</h1>
-  <div class="sub-t">Highway Drive Simulator — Prototype v0.2</div>
+  <div class="sub-t">Highway Drive Simulator — Prototype v0.15</div>
   <div class="sel-lbl">車種</div>
   <div class="btn-row" id="vsel">
     <button class="sel-btn on" data-v="sedan">セダン</button>
@@ -155,6 +161,7 @@ body { background:#000; overflow:hidden; font-family:'Segoe UI',sans-serif; }
     <span>← →</span>：ステアリング
   </div>
   <div id="msg"></div>
+  <div id="ver-badge">Version v15</div>
 </div>
 
 <canvas id="canvas"></canvas>
@@ -168,7 +175,7 @@ import * as THREE from 'three';
 // ═══════════════════════════════════════════════
 // CONSTANTS
 // ═══════════════════════════════════════════════
-const LANE_W   = 3.25;   // 3-lane section width (m)
+const LANE_W   = 3.5;   // highway standard lane width (m)
 const NUM_LN   = 3;
 const LS       = 0.75;   // left shoulder
 const RS       = 0.75;   // right shoulder
@@ -892,7 +899,7 @@ function makeVehicle(type, colorHex, bodyOpacity=1) {
 
     // Brake lights
     const blG=new THREE.BoxGeometry(.24,.15,.07);
-    const bls=[-W/2+.16, W/2-.16].map(bx=>{
+    const bls=[-W/2+.10, W/2-.10].map(bx=>{
       const bm=new THREE.Mesh(blG,new THREE.MeshLambertMaterial({color:0xff2020,emissive:0xff0000,emissiveIntensity:0}));
       bm.position.set(bx,bodyH*.58+.22,L/2); g.add(bm); return bm;
     });
@@ -904,8 +911,8 @@ function makeVehicle(type, colorHex, bodyOpacity=1) {
       const mat=new THREE.MeshLambertMaterial({color:0xffaa00,emissive:0xffaa00,emissiveIntensity:0});
       const m=new THREE.Mesh(inG,mat); m.position.set(ix,bodyH*.58+.22,L/2); g.add(m); return m;
     };
-    g.userData.indL=mkInd(-W/2+.46);
-    g.userData.indR=mkInd( W/2-.46);
+    g.userData.indL=mkInd(-W/2+.10);
+    g.userData.indR=mkInd( W/2-.10);
 
     // Wheels
     const wr=.35,wt=.26,wb=L*.57,wtr=W/2+.03;
@@ -1094,7 +1101,7 @@ class AIVeh {
     this.speed=clamp(0,this.d.maxSpd/3.6,this.speed);
     this.setBrake(brk||(this.speed<des-3));
 
-    const reductionAhead = getLaneReductionAhead(this.z, 700);
+    const reductionAhead = getLaneReductionAhead(this.z, 900);
     if(reductionAhead && this.lane > reductionAhead.to - 1){
       this.lane = reductionAhead.to - 1;
       this.tgtX = laneX(this.lane, this.z);
@@ -1107,7 +1114,7 @@ class AIVeh {
       let nl=this.lane;
       const maxLaneHere = laneCountAtZ(this.z) - 1;
       if(fDist<sHW*1.35&&fSpd<this.tgt*.8&&this.agg>.28&&this.lane<maxLaneHere){
-        const pendingReduction = getLaneReductionAhead(this.z, 520);
+        const pendingReduction = getLaneReductionAhead(this.z, 700);
         if(!(pendingReduction && this.lane + 1 > pendingReduction.to - 1)){
           nl=this.lane+1; this.winkerDir=1;
         }
@@ -1126,14 +1133,14 @@ class AIVeh {
           if(Math.abs(o.x-tx)<LANE_W*.6&&Math.abs(o.z-this.z)<22)safe=false;
         });
         if(player&&Math.abs(player.x-tx)<LANE_W*.6&&Math.abs(player.z-this.z)<22)safe=false;
-        if(safe){this.lane=nl;this.tgtX=tx;this.changing=true;this.chTimer=0;this.chCD=rand(3,7);}
+        if(safe){this.lane=nl;this.tgtX=tx;this.changing=true;this.chTimer=0;this.chCD=rand(6,12);}
         else this.winkerDir=0;
       }
     }
     if(this.changing){
       this.tgtX = laneX(Math.min(this.lane, laneCountAtZ(this.z)-1), this.z);
       const diff=this.tgtX-this.x;
-      this.x+=diff*Math.min(1,dt*(0.9+this.skl*0.65));
+      this.x+=diff*Math.min(1,dt*(0.225+this.skl*0.1625));
       if(Math.abs(diff)<.08){this.x=this.tgtX;this.changing=false;this.winkerDir=0;}
     }
 
@@ -1154,7 +1161,7 @@ class AIVeh {
         this.changing = true;
         this.winkerDir = -1;
         this.tgtX = laneX(1, this.z);
-        this.x += (this.tgtX - this.x) * Math.min(1, dt * 14.0);
+        this.x += (this.tgtX - this.x) * Math.min(1, dt * 3.5);
       }
     }
     this.mesh.position.set(this.x,0,this.z);
@@ -1176,7 +1183,7 @@ class AIVeh {
 // TRAFFIC / COLLISION / STATE
 // ═══════════════════════════════════════════════
 const AI_LIST=[];
-const DENSITY={low:10,mid:22,high:36};
+const DENSITY={low:30,mid:66,high:108};
 const LOCAL_TRAFFIC_TARGET={low:{ahead:3,behind:2},mid:{ahead:5,behind:3},high:{ahead:7,behind:4}};
 const TYPE_W=['sedan','sedan','sedan','kei','kei','sports','truck','truck','dump','bus','bike'];
 let spawnT=0;
@@ -1185,7 +1192,7 @@ let distTot=0,spdSum=0,spdN=0;
 
 function spawnAI(pl){
   const active = AI_LIST.filter(v=>v.active);
-  const nearActive = active.filter(v => v.z > pl.z - 620 && v.z < pl.z + 380);
+  const nearActive = active.filter(v => v.z > pl.z - 760 && v.z < pl.z + 460);
   if(nearActive.length>=DENSITY[trafficDensity]) return false;
 
   const cfg = LOCAL_TRAFFIC_TARGET[trafficDensity] || LOCAL_TRAFFIC_TARGET.mid;
@@ -1377,7 +1384,7 @@ document.getElementById('go-btn').addEventListener('click',()=>{
   camX=player.x; camSX=player.x; camZ=player.z+4.2;
   camera.position.set(camX,3.4,camZ);
   document.getElementById('h-vtype').textContent=VDEFS[selectedVehicle].name;
-  for(let i=0;i<12;i++) spawnAI(player);
+  for(let i=0;i<24;i++) spawnAI(player);
   showMsg('Xキー：アクセル　Zキー：ブレーキ\n本線へ合流してください',4500);
   started=true;
 });
@@ -1397,7 +1404,8 @@ function loop(t){
   if(spawnT2>0.45){
     spawnT2=0;
     spawnAI(player);
-    if(Math.random()<0.55) spawnAI(player);
+    if(Math.random()<0.78) spawnAI(player);
+    if(Math.random()<0.42) spawnAI(player);
   }
 
   const active=AI_LIST.filter(v=>v.active);
