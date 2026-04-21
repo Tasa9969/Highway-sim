@@ -625,8 +625,9 @@ function buildLaneReductionCones(zStart){
   [260, 220, 180, 140, 100].forEach((dist, idx) => {
     const z = zStart + dist;
     if(z > 25) return;
+    // Keep cones entirely inside the closing right lane.
     const t = idx / 4;
-    const x = laneX(2, z) - 0.15 - t * (LANE_W - 0.55);
+    const x = laneX(2, z) + 0.65 - t * 0.9;
     const cone = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.52, 10), coneMat);
     cone.position.set(x, 0.26, z);
     cone.castShadow = true;
@@ -639,7 +640,7 @@ function buildLaneReductionCones(zStart){
   [210, 130].forEach(dist => {
     const z = zStart + dist;
     if(z > 25) return;
-    const x = laneX(2, z) - 0.6;
+    const x = laneX(2, z) + 0.25;
     const post = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.6, 0.08), MAT.metal);
     post.position.set(x, 0.8, z);
     scene.add(post);
@@ -1158,7 +1159,8 @@ class AIVeh {
     }
     this.mesh.position.set(this.x,0,this.z);
     this.mesh.rotation.y=(this.x-this.tgtX)*.055;
-    if(this.z<-ROAD_LEN-60) this.despawn();
+    if(player && (this.z < player.z - 700 || this.z > player.z + 480)) this.despawn();
+    else if(this.z<-ROAD_LEN-60) this.despawn();
   }
   setBrake(on){
     if(this.mesh.userData.brakeLights)
@@ -1183,29 +1185,30 @@ let distTot=0,spdSum=0,spdN=0;
 
 function spawnAI(pl){
   const active = AI_LIST.filter(v=>v.active);
-  if(active.length>=DENSITY[trafficDensity]) return false;
+  const nearActive = active.filter(v => v.z > pl.z - 620 && v.z < pl.z + 380);
+  if(nearActive.length>=DENSITY[trafficDensity]) return false;
 
   const cfg = LOCAL_TRAFFIC_TARGET[trafficDensity] || LOCAL_TRAFFIC_TARGET.mid;
-  const nearbyAhead = active.filter(v => v.z < pl.z && v.z > pl.z - 340).length;
-  const nearbyBehind = active.filter(v => v.z > pl.z && v.z < pl.z + 220).length;
+  const nearbyAhead = nearActive.filter(v => v.z < pl.z && v.z > pl.z - 360).length;
+  const nearbyBehind = nearActive.filter(v => v.z > pl.z && v.z < pl.z + 240).length;
   const aheadShortage = Math.max(0, cfg.ahead - nearbyAhead);
   const behindShortage = Math.max(0, cfg.behind - nearbyBehind);
 
   let putBehind;
   if(aheadShortage > behindShortage) putBehind = false;
   else if(behindShortage > aheadShortage) putBehind = true;
-  else putBehind = Math.random() < 0.35;
+  else putBehind = Math.random() < 0.42;
 
-  const tries = 12;
+  const tries = 20;
   for(let i=0;i<tries;i++){
-    const z = putBehind ? pl.z + rand(70, 200) : pl.z - rand(70, 320);
+    const z = putBehind ? pl.z + rand(80, 260) : pl.z - rand(90, 420);
     const laneCount = laneCountAtZ(z);
-    const lanePool = laneCount === 2 ? [0,0,1,1] : [0,0,1,1,2,2];
+    const lanePool = laneCount === 2 ? [0,0,1,1,1] : [0,0,1,1,2,2];
     const ln = lanePool[Math.floor(Math.random()*lanePool.length)];
     const lx = laneX(ln, z);
 
-    const blockedByAI = active.some(v => Math.abs(v.z - z) < 24 && Math.abs(v.x - lx) < LANE_W * 0.7);
-    const blockedByPlayer = Math.abs(pl.z - z) < 28 && Math.abs(pl.x - lx) < LANE_W * 0.7;
+    const blockedByAI = nearActive.some(v => Math.abs(v.z - z) < 26 && Math.abs(v.x - lx) < LANE_W * 0.75);
+    const blockedByPlayer = Math.abs(pl.z - z) < 34 && Math.abs(pl.x - lx) < LANE_W * 0.75;
     if(blockedByAI || blockedByPlayer) continue;
 
     const type=TYPE_W[Math.floor(Math.random()*TYPE_W.length)];
