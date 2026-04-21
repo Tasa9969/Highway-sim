@@ -108,7 +108,7 @@ body { background:#000; overflow:hidden; font-family:'Segoe UI',sans-serif; }
 
 <div id="start-screen">
   <h1>高速道路ドライブ</h1>
-  <div class="sub-t">Highway Drive Simulator — Prototype v0.16</div>
+  <div class="sub-t">Highway Drive Simulator — Prototype v0.17</div>
   <div class="sel-lbl">車種</div>
   <div class="btn-row" id="vsel">
     <button class="sel-btn on" data-v="sedan">セダン</button>
@@ -161,7 +161,7 @@ body { background:#000; overflow:hidden; font-family:'Segoe UI',sans-serif; }
     <span>← →</span>：ステアリング
   </div>
   <div id="msg"></div>
-  <div id="ver-badge">Version v16</div>
+  <div id="ver-badge">Version v17</div>
 </div>
 
 <canvas id="canvas"></canvas>
@@ -897,9 +897,11 @@ function makeVehicle(type, colorHex, bodyOpacity=1) {
       wsm.position.set(0,bodyH+rH*.55+.22,0); g.add(wsm);
     }
 
-    // Brake lights
+    // Rear lamps: indicators at the outer corners, brake lights slightly inward
     const blG=new THREE.BoxGeometry(.24,.15,.07);
-    const bls=[-W/2+.10, W/2-.10].map(bx=>{
+    const brakeInset = Math.min(0.34, W * 0.22);
+    const indicatorInset = Math.min(0.08, W * 0.08);
+    const bls=[-W/2+brakeInset, W/2-brakeInset].map(bx=>{
       const bm=new THREE.Mesh(blG,new THREE.MeshLambertMaterial({color:0xff2020,emissive:0xff0000,emissiveIntensity:0}));
       bm.position.set(bx,bodyH*.58+.22,L/2); g.add(bm); return bm;
     });
@@ -911,8 +913,8 @@ function makeVehicle(type, colorHex, bodyOpacity=1) {
       const mat=new THREE.MeshLambertMaterial({color:0xffaa00,emissive:0xffaa00,emissiveIntensity:0});
       const m=new THREE.Mesh(inG,mat); m.position.set(ix,bodyH*.58+.22,L/2); g.add(m); return m;
     };
-    g.userData.indL=mkInd(-W/2+.10);
-    g.userData.indR=mkInd( W/2-.10);
+    g.userData.indL=mkInd(-W/2+indicatorInset);
+    g.userData.indR=mkInd( W/2-indicatorInset);
 
     // Wheels
     const wr=.35,wt=.26,wb=L*.57,wtr=W/2+.03;
@@ -1170,8 +1172,8 @@ class AIVeh {
       diff = this.tgtX - this.x;
     }
     const dir = Math.sign(diff);
-    const maxLatSpeed = 0.28 + this.skl*0.10; // slower, about quarter-speed lane changes
-    const maxLatAcc = 0.30 + this.skl*0.14;
+    const maxLatSpeed = (0.28 + this.skl*0.10) * 3.0; // faster lane changes
+    const maxLatAcc = (0.30 + this.skl*0.14) * 3.0;
     let desiredLatVel = 0;
     if(Math.abs(diff) > 0.02){
       desiredLatVel = dir * Math.min(maxLatSpeed, Math.sqrt(Math.abs(diff))*0.34 + 0.05);
@@ -1201,7 +1203,7 @@ class AIVeh {
 
     this.z-=this.speed*dt;
     this.mesh.position.set(this.x,0,this.z);
-    this.mesh.rotation.y = clamp(-0.16, 0.16, this.latVel * 0.55);
+    this.mesh.rotation.y = 0;
     if(player && (this.z < player.z - 700 || this.z > player.z + 480)) this.despawn();
     else if(this.z<-ROAD_LEN-60) this.despawn();
   }
